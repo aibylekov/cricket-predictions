@@ -9,6 +9,7 @@ __pycache__/
 *.sqlite3
 data/raw/
 data/derived/
+data/lake/
 Thumbs.db
 .DS_Store
 .vscode/
