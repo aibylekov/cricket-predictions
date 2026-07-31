@@ -34,6 +34,27 @@
 
 ---
 
+### Фундаментален слой (план)
+
+Фундаменталните данни (обявен състав, контузии, ротация, важност на мача)
+влизат ДИСЦИПЛИНИРАНО и заградено. LLM може да ЧЕТЕ/ИЗВЛИЧА, но НИКОГА не
+движи вероятности сам.
+- **Ниво 1 — structured availability (в модела):** обявеният XI преизчислява
+  отборните агрегати за мача (липсващ ключов играч → изключен). Live feed
+  от Roanuz, не от историческата база. Backtest-ваемо.
+- **Ниво 2 — news signals като тесни структурирани флагове (v2, НЕ MVP):**
+  напр. `key_player_doubtful` (0/1), `resting_regulars` (0/1). LLM извлича
+  флага от текст; МОДЕЛЪТ учи тежестта от историята. Изисква news ingest +
+  внимателен backtest. Отложено до работещ baseline.
+- **Ниво 3 — news контекст в ПРОЗАТА (content слой, Фаза 3):** storylines,
+  завръщащи се играчи, форма на терен — вплетени в текста, без да пипат
+  числата. Безопасно и полезно рано.
+
+Нов вход „Context & news" се разклонява: тънка структурирана част към
+модела (Нива 1–2), богата текстова част към content генератора (Ниво 3).
+
+---
+
 ## 2. Разделение на инструментите
 
 | Инструмент | Роля |
@@ -203,6 +224,19 @@ git push -u origin main
 - ⬜ 1.1 Профилиране на 600MB DB (таблици, grain, покритие по дати, null rate, дупки).
 - ⬜ 1.2 L0 landing като immutable Parquet, партициониран по сезон/турнир, read-only.
 - ⬜ 1.3 L1 dims + `bridge_entity` (entity resolution Roanuz ↔ odds ↔ internal).
+  **1.3 L1 dims + bridge_entity — includes these locked fixes:**
+    - Recover the 1970-01-01 date: 82 rows in `over_summary_balls.updated`;
+      rebuild via `over_summary_id → over_summaries.match_id →
+      cricket__matches.start_at`. `entry_time` is clean; use it as primary.
+    - Parse batter/bowler out of `over_summary_balls.comment` text
+      (format e.g. "Bowler to Batter: outcome."). Populate proper
+      `batter_id` / `bowler_id` columns in L1.
+    - **LEAKAGE RULE:** `cricket__players.playing_xi` is filled only AFTER a
+      match is played. It is allowed ONLY as a historical feature for
+      past matches. It MUST NOT be used as a pre-match feature for
+      upcoming predictions (data leakage). For live predictions the
+      announced XI comes from the Roanuz lineup endpoint (~30–40 min
+      before toss), never from this DB.
 - ⬜ 1.4 L2 агрегати с `as_of_date`.
 - ⬜ 1.5 L3 feature-row assembler.
 - **Готово, когато:** L1 → един Roanuz ID и едно odds-име се резолвят към същия `internal_id`; L2 → leakage тест доказва, че агрегат за дата D не ползва ред с дата ≥ D; L3 → feature row за исторически мач се сверява ръчно.
