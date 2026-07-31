@@ -1,0 +1,22 @@
+# Core data stack
+duckdb>=0.10
+pandas>=2.2
+pyarrow>=16.0
+numpy>=1.26
+
+# ML
+scikit-learn>=1.5
+lightgbm>=4.3
+
+# HTTP / APIs
+httpx>=0.27
+python-dotenv>=1.0
+
+# Database (raw MySQL/MariaDB profiling — pure-Python driver, no build step)
+pymysql>=1.1
+
+# Content generation
+anthropic>=0.28
+
+# CLI / utilities
+tqdm>=4.66

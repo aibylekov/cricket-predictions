@@ -1,0 +1,53 @@
+# predict.yml — GitHub Actions workflow (Phase 4)
+#
+# IMPORTANT: do not enable cron until workflow_dispatch has been tested
+# manually at least once. See README section 8 for the toss-timing trap.
+
+name: Cricket Predictions
+
+on:
+  workflow_dispatch:
+    inputs:
+      match_id:
+        description: "Internal match ID (e.g. M2026_0001)"
+        required: true
+  # schedule:
+  #   - cron: "0 6 * * *"   # Uncomment in Phase 4 after manual test passes
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Restore track record state (never commit-back)
+      - name: Restore track record cache
+        uses: actions/cache@v4
+        with:
+          path: data/track_record.db
+          key: track-record-${{ github.run_id }}
+          restore-keys: track-record-
+
+      - name: Run pipeline
+        env:
+          ROANUZ_API_KEY: ${{ secrets.ROANUZ_API_KEY }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          PUBLISH_API_KEY: ${{ secrets.PUBLISH_API_KEY }}
+        run: |
+          python -m src.pipeline --match-id "${{ github.event.inputs.match_id }}"
+
+      # Save track record state
+      - name: Save track record cache
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: data/track_record.db
+          key: track-record-${{ github.run_id }}
