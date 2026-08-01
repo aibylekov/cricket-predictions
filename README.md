@@ -284,28 +284,22 @@ git push -u origin main
 **Итерации след това:** score/toss/props модели, matchup фичъри (v2).
 
 ### Текущ статус (обновявай тук всяка сесия)
-- ✅ Планиране: KPI каталог, архитектурна диаграма, worked-example модел на данните (xlsx).
-- ✅ Фаза 0: скеле (папка, venv, структура, .gitignore, .env). MariaDB инсталирана локално.
-- ✅ Фаза 1.1: raw DB зареден в `cricket_raw` (32 релевантни таблици, 2.69M реда, 2014→2026).
-      Профилиране + source investigation готови (logs/raw_profile_report.md).
+- ✅ Планиране: KPI каталог, архитектурна диаграма, worked-example (xlsx).
+- ✅ Фаза 0: скеле, venv, GitHub repo (public, aibylekov/cricket-predictions).
+- ✅ Фаза 1.1: raw DB зареден (cricket_raw), профилиране + source investigation.
+- ✅ Фаза 1.2: immutable L0 в Parquet (data/lake/l0/), 20 таблици, проверено ред-по-ред.
+- ✅ Фаза 1.3: L1 готов —
+    · T20-мъже филтър: 4,763 мача (status + is_completed налични).
+    · fact_ball_by_ball: 502,159 реда; дата-1970 fix (50); comment parse 99.86% (686 NULL).
+    · dim_match/team/player/tournament/venue; dim_team dedupe (544→531, team_id_map).
+    · bridge_entity: 68 T20-мъжки priced мача свързани (от 354: 68 + 1 rejected + 285 out-of-scope).
+- ✅ DATA СЛОЙ ЗАВЪРШЕН. Суровият дъмп е почистен, филтриран и свързан.
 
-**Заключени решения от 1.1:**
-- Ball-by-ball ядро: `cricket__over_summary_balls` е истински per-delivery (~971K реда).
-  Батър/боулър са в текста на `comment` → нужен parsing при L0. Датата 1970 = 82 реда,
-  възстановими, не блокер.
-- Odds източник за ИСТОРИЯ: `odd_matches` + `odd_match_odds` (пазар "Winner 2 Ways",
-  4 вендора). НЕ използваме odds__<vendor>_* (празни) или cricket__odds (стар).
-  Живият 1xbet/Parimatch feed остава отделно за бъдещи прогнози.
-- Odds ↔ cricket НЯМА чист FK (само име + час). Строг join дава 59 T20-мъжки priced
-  мача от 354 общо — разликата е име-разминаване. Затова:
-- ПРОМЯНА В РЕДА: bridge_entity се повдига веднага след L0 landing (беше 1.3).
-  Odds покритието не може да се измери преди entity resolution да съществува.
+**Заключено за Фаза 2 (валидация):**
+- Основна точност: всички завършени T20 мъже (~4,763), с осъзнаване по турнир (IPL водещ).
+- Вторична проверка срещу пазара: само ~68 мача с odds (тънко, ограничен обхват).
 
-- ✅ Фаза 1.3 Part 1: L1 clean transformations. 4,763 T20-мъжки мача;
-    fact_ball_by_ball 502,159 реда; дата-1970 fix (50 реда); comment parse
-    99.86% (686 NULL, запазени); dim_match/team/player/tournament/venue.
-    status + is_completed налични. (build_l1.py committed.)
-🟨 Следва: Фаза 1.3 Part 2 — bridge_entity (entity resolution, odds).
+🟨 Следва: L2 — агрегати с as_of_date (point-in-time слой + leakage тест).
 
 ---
 
