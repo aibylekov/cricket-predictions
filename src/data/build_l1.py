@@ -80,47 +80,92 @@ def create_views(con: duckdb.DuckDBPyConnection) -> None:
         """
     )
 
+    # Team canonicalization: cricket__teams holds the SAME real team under two
+    # Roanuz key schemes (e.g. IPL 'mi' vs 'a-rz--cricket--mmindianlkksck'),
+    # producing duplicate ids with identical name+short_name. Collapse each
+    # exact-name group to ONE canonical id = the id used in the MOST T20-men
+    # matches (ties -> lowest id). A full old_id -> canonical_id map is kept so
+    # anything still referencing an old id resolves. (Same spirit as the
+    # dim_player key-dedupe.)
+    con.execute(
+        """
+        CREATE VIEW team_scoped AS
+        SELECT DISTINCT t.id AS team_id, t.name AS team_name
+        FROM l0_teams t
+        WHERE t.id IN (SELECT team_a FROM m20 UNION SELECT team_b FROM m20)
+        """
+    )
+    con.execute(
+        """
+        CREATE VIEW team_refs AS
+        SELECT team_id, COUNT(*) AS refs FROM (
+            SELECT team_a AS team_id FROM m20
+            UNION ALL SELECT team_b AS team_id FROM m20
+        ) GROUP BY team_id
+        """
+    )
+    con.execute(
+        """
+        CREATE VIEW team_canon AS
+        SELECT ts.team_id, ts.team_name,
+               FIRST_VALUE(ts.team_id) OVER (
+                   PARTITION BY ts.team_name
+                   ORDER BY COALESCE(tr.refs, 0) DESC, ts.team_id ASC
+               ) AS canonical_id
+        FROM team_scoped ts
+        LEFT JOIN team_refs tr ON tr.team_id = ts.team_id
+        """
+    )
+    con.execute(
+        "CREATE VIEW team_id_map AS "
+        "SELECT team_id AS old_id, canonical_id, (team_id <> canonical_id) AS is_remapped "
+        "FROM team_canon"
+    )
+
 
 # --------------------------------------------------------------------------- #
 # Dataset definitions (name -> SELECT). Order matters only for readability.
 # --------------------------------------------------------------------------- #
 def dataset_sql() -> dict[str, str]:
     return {
-        # --- dim_match -----------------------------------------------------
+        # --- dim_match (team ids canonicalized via team_id_map) ------------
         "dim_match": """
             SELECT
-                id                       AS match_id,
-                key                      AS match_key,
-                tournament_id,
-                name                     AS match_name,
-                short_name,
-                sub_title,
-                team_a                   AS team_a_id,
-                team_b                   AS team_b_id,
-                start_at,
-                start_at_local,
-                format,
-                gender,
-                status,
-                (status = 'completed')   AS is_completed,
-                play_status,
-                winner,
-                result,
-                result_type,
-                target_runs,
-                target_balls,
-                target_dl_applied,
-                json_extract_string(venue, '$.key')  AS venue_key,
-                weather
-            FROM m20
+                m.id                     AS match_id,
+                m.key                    AS match_key,
+                m.tournament_id,
+                m.name                   AS match_name,
+                m.short_name,
+                m.sub_title,
+                COALESCE(ma.canonical_id, m.team_a) AS team_a_id,
+                COALESCE(mb.canonical_id, m.team_b) AS team_b_id,
+                m.start_at,
+                m.start_at_local,
+                m.format,
+                m.gender,
+                m.status,
+                (m.status = 'completed')  AS is_completed,
+                m.play_status,
+                m.winner,
+                m.result,
+                m.result_type,
+                m.target_runs,
+                m.target_balls,
+                m.target_dl_applied,
+                json_extract_string(m.venue, '$.key')  AS venue_key,
+                m.weather
+            FROM m20 m
+            LEFT JOIN team_id_map ma ON ma.old_id = m.team_a
+            LEFT JOIN team_id_map mb ON mb.old_id = m.team_b
         """,
-        # --- dim_team (scoped to teams appearing in T20-men matches) -------
+        # --- team_id_map (old duplicate id -> canonical id) ----------------
+        "team_id_map": """
+            SELECT old_id, canonical_id, is_remapped
+            FROM team_id_map
+            ORDER BY old_id
+        """,
+        # --- dim_team (deduped: one row per canonical team id) -------------
         "dim_team": """
-            WITH team_ids AS (
-                SELECT team_a_id AS team_id FROM (SELECT team_a AS team_a_id FROM m20)
-                UNION
-                SELECT team_b AS team_id FROM m20
-            )
             SELECT
                 t.id            AS team_id,
                 t.key           AS team_key,
@@ -130,7 +175,8 @@ def dataset_sql() -> dict[str, str]:
                 t.country_code,
                 t.is_national
             FROM l0_teams t
-            JOIN (SELECT DISTINCT team_id FROM team_ids) ti ON ti.team_id = t.id
+            JOIN (SELECT DISTINCT canonical_id FROM team_canon) c
+              ON c.canonical_id = t.id
         """,
         # --- dim_player (scoped to players in T20-men matches) -------------
         # A player key can carry slightly different names/roles across matches;
@@ -264,6 +310,13 @@ def main() -> None:
     print("  is_completed derivation: (status == 'completed').")
     print("  status breakdown: " + ", ".join(f"{s}={c}" for s, c in status_rows))
 
+    # --- dim_team dedupe summary ---------------------------------------- #
+    n_scoped = con.execute("SELECT COUNT(*) FROM team_scoped").fetchone()[0]
+    n_canon = con.execute("SELECT COUNT(DISTINCT canonical_id) FROM team_canon").fetchone()[0]
+    n_remapped = con.execute("SELECT COUNT(*) FROM team_id_map WHERE is_remapped").fetchone()[0]
+    print(f"\ndim_team dedupe: {n_scoped} scoped team ids -> {n_canon} canonical "
+          f"({n_remapped} duplicate ids remapped to a canonical id).")
+
     # --- Write datasets -------------------------------------------------- #
     print("\nWriting L1 datasets ->", L1_ROOT)
     counts: dict[str, int] = {}
@@ -325,6 +378,12 @@ def main() -> None:
                           "completed": completed,
                           "not_completed_or_other": not_completed,
                           "status_breakdown": {s: c for s, c in status_rows}},
+        "dim_team_dedupe": {"scoped_team_ids": n_scoped,
+                            "canonical_teams": n_canon,
+                            "duplicate_ids_remapped": n_remapped,
+                            "method": "collapse exact-name duplicates to the id "
+                                      "used in the most T20-men matches; "
+                                      "team_id_map keeps old_id -> canonical_id"},
         "date_1970_fix": {"rows_corrected": corrected,
                           "method": "over_summary_id -> over_summaries.match_id "
                                     "-> cricket__matches.start_at; entry_time is "
