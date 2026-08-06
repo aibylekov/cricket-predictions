@@ -60,6 +60,13 @@ MANUAL_MERGES = {
     "a-rz--headinv6wlv9": ["c__stadium__headingley_cricket_ground__a801e"],
 }
 
+# ---- confirmed duplicate tournament_ids to drop from L1 (matches + dim row).
+#   956 = "Asian Legends League, 2025": a never-started schedule snapshot whose
+#   early-round fixtures duplicate id 963 (the actually-played, completed copy).
+#   All 15 rows are status=not_started / winner NULL (already inert for
+#   aggregates); dropped to remove duplicate snapshot targets. 963 is kept.
+DROP_TOURNAMENT_IDS = {956}
+
 # ---- city values that carry no locational evidence (country/region-level or junk)
 JUNK_CITY = {
     "", "none", "nan", "tbc",
@@ -347,6 +354,12 @@ def main():
     # ---------- FIX 2 ----------
     tf, tcounts, dupes = fix_tournaments(con)
 
+    # ---------- FIX 3 — drop confirmed duplicate tournament(s) ----------
+    dm_rows_before = len(dm)
+    dm = dm[~dm["tournament_id"].astype("int64").isin(DROP_TOURNAMENT_IDS)].copy()
+    dropped_matches = dm_rows_before - len(dm)
+    tf = tf[~tf["tournament_id"].astype("int64").isin(DROP_TOURNAMENT_IDS)].copy()
+
     # ---------- WRITE updated L1 ----------
     write_parquet(con, new_venue, DIM_VENUE)
     write_parquet(con, map_df, VENUE_MAP)
@@ -428,8 +441,17 @@ def main():
         for tid, nm in names:
             print(f"        id={tid}  {nm}")
 
+    print("\n" + "=" * 74)
+    print("FIX 3 — drop confirmed duplicate tournament(s)")
+    print("=" * 74)
+    print(f"  dropped tournament_ids: {sorted(DROP_TOURNAMENT_IDS)}")
+    print(f"  dim_match rows dropped : {dropped_matches} "
+          f"({dm_rows_before} -> {len(dm)})")
+    print(f"  dim_tournament rows    : removed {len(DROP_TOURNAMENT_IDS)} "
+          f"(956 = Asian Legends never-started dup of 963; 963 kept)")
+
     con.close()
-    print("\n(Updated L1 written. Flagged items NOT finalized — awaiting your review.)")
+    print("\n(Updated L1 written. Remaining flagged items NOT finalized — awaiting review.)")
 
 
 if __name__ == "__main__":
