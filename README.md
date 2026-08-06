@@ -284,21 +284,22 @@ git push -u origin main
 **Итерации след това:** score/toss/props модели, matchup фичъри (v2).
 
 ### Текущ статус (обновявай тук всяка сесия)
-- ✅ Фаза 0–1.3: DATA СЛОЙ (L0→L1→L2) завършен, дедупликиран, leakage-проверен.
-    · L0: immutable Parquet, 20 таблици.
-    · L1: 4,748 T20-мъжки мача; fact_ball_by_ball parse 99.86%; dim_team dedupe;
-      dim_venue dedupe (388→274); league_key (IPL = 4 сезона, 298 мача, един цял).
-    · bridge_entity: 68 T20-мъжки priced мача свързани.
-    · L2: point-in-time агрегати с as_of_date. team_form 18,922, venue_stats 3,695,
-      match_conditions 4,748, match_odds_devig 61. Leakage тест: PASS.
-- ✅ Всички Parquet gitignore-нати; L0/L1/L2 скриптове + leakage тест на GitHub.
+- ✅ DATA СЛОЙ ЗАВЪРШЕН: L0 → L1 → L2 → L3, leakage-проверен, на GitHub.
+    · L3 feature-row assembler: една плоска таблица, един ред на мач
+      (home_/away_ блокове + venue + conditions + odds + target winner).
+    · is_neutral_venue + home_team_source (честен сигнал за надеждността на "home").
+    · L3 leakage re-check: PASS. Никакви редове изхвърлени (липси = NULL).
+- ✅ Целият data слой (скриптове + тестове) на GitHub; Parquet gitignore-нат.
 
-**Заключено за Фаза 2 (валидация):**
-- Основна точност: всички завършени T20 мъже, tournament-aware (IPL водещ, вече един цял).
-- Вторична проверка срещу пазара: ~61 мача с odds (тънко, ограничен обхват).
-- Ball-by-ball покритие: пълно от 2024 нататък за топ лиги; 2023 и по-рано = без фазови данни.
+**Пренесени задачи за Фаза 2 (записани в L3 manifest):**
+- TEAM-LEVEL ODDS BRIDGE: подравняване на odds home/away с нашия home_team
+  (61-те priced мача; ориентацията още непотвърдена).
+- Tournament-aware accuracy reporting (отделен % по league_key, IPL водещ).
+- Известни приети ограничения: day_night timezone евристика; is_neutral_venue
+  хваща само международни неутрални венюта.
 
-🟨 Следва: L3 — feature-row assembler (една плоска таблица, един ред на мач). После: Фаза 2 модел.
+🟨 Следва: Фаза 2 — validation harness ПЪРВО (walk-forward split, log loss /
+Brier / calibration / accuracy), после odds-baseline + baseline модел.
 
 ---
 
