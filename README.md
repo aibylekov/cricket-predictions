@@ -284,22 +284,21 @@ git push -u origin main
 **Итерации след това:** score/toss/props модели, matchup фичъри (v2).
 
 ### Текущ статус (обновявай тук всяка сесия)
-- ✅ Планиране: KPI каталог, архитектурна диаграма, worked-example (xlsx).
-- ✅ Фаза 0: скеле, venv, GitHub repo (public, aibylekov/cricket-predictions).
-- ✅ Фаза 1.1: raw DB зареден (cricket_raw), профилиране + source investigation.
-- ✅ Фаза 1.2: immutable L0 в Parquet (data/lake/l0/), 20 таблици, проверено ред-по-ред.
-- ✅ Фаза 1.3: L1 готов —
-    · T20-мъже филтър: 4,763 мача (status + is_completed налични).
-    · fact_ball_by_ball: 502,159 реда; дата-1970 fix (50); comment parse 99.86% (686 NULL).
-    · dim_match/team/player/tournament/venue; dim_team dedupe (544→531, team_id_map).
-    · bridge_entity: 68 T20-мъжки priced мача свързани (от 354: 68 + 1 rejected + 285 out-of-scope).
-- ✅ DATA СЛОЙ ЗАВЪРШЕН. Суровият дъмп е почистен, филтриран и свързан.
+- ✅ Фаза 0–1.3: DATA СЛОЙ (L0→L1→L2) завършен, дедупликиран, leakage-проверен.
+    · L0: immutable Parquet, 20 таблици.
+    · L1: 4,748 T20-мъжки мача; fact_ball_by_ball parse 99.86%; dim_team dedupe;
+      dim_venue dedupe (388→274); league_key (IPL = 4 сезона, 298 мача, един цял).
+    · bridge_entity: 68 T20-мъжки priced мача свързани.
+    · L2: point-in-time агрегати с as_of_date. team_form 18,922, venue_stats 3,695,
+      match_conditions 4,748, match_odds_devig 61. Leakage тест: PASS.
+- ✅ Всички Parquet gitignore-нати; L0/L1/L2 скриптове + leakage тест на GitHub.
 
 **Заключено за Фаза 2 (валидация):**
-- Основна точност: всички завършени T20 мъже (~4,763), с осъзнаване по турнир (IPL водещ).
-- Вторична проверка срещу пазара: само ~68 мача с odds (тънко, ограничен обхват).
+- Основна точност: всички завършени T20 мъже, tournament-aware (IPL водещ, вече един цял).
+- Вторична проверка срещу пазара: ~61 мача с odds (тънко, ограничен обхват).
+- Ball-by-ball покритие: пълно от 2024 нататък за топ лиги; 2023 и по-рано = без фазови данни.
 
-🟨 Следва: L2 — агрегати с as_of_date (point-in-time слой + leakage тест).
+🟨 Следва: L3 — feature-row assembler (една плоска таблица, един ред на мач). После: Фаза 2 модел.
 
 ---
 
