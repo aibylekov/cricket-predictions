@@ -43,6 +43,7 @@ L2 = ROOT / "data" / "lake" / "l2"
 L1_DIM_MATCH = (L1 / "dim_match" / "dim_match.parquet").as_posix()
 L1_FACT = (L1 / "fact_ball_by_ball" / "fact_ball_by_ball.parquet").as_posix()
 L1_VENUE = (L1 / "dim_venue" / "dim_venue.parquet").as_posix()
+L1_TOURNAMENT = (L1 / "dim_tournament" / "dim_tournament.parquet").as_posix()
 L1_MATCH_BRIDGE = (L1 / "bridge" / "match_bridge.parquet").as_posix()
 L0_ODDS = (L0 / "odd_match_odds" / "*.parquet").as_posix()
 L0_MATCHES = (L0 / "cricket__matches" / "*.parquet").as_posix()
@@ -60,17 +61,20 @@ def connect() -> duckdb.DuckDBPyConnection:
     con.execute(f"""
         CREATE VIEW dim_match AS
         SELECT
-            CAST(match_id   AS BIGINT) AS match_id,
-            CAST(tournament_id AS BIGINT) AS tournament_id,
-            CAST(team_a_id  AS BIGINT) AS team_a_id,
-            CAST(team_b_id  AS BIGINT) AS team_b_id,
-            start_at,
-            start_at_local,
-            CAST(start_at AS DATE)     AS match_date,
-            winner,
-            result_type,
-            venue_key
-        FROM read_parquet('{L1_DIM_MATCH}');
+            CAST(m.match_id   AS BIGINT) AS match_id,
+            CAST(m.tournament_id AS BIGINT) AS tournament_id,
+            t.league_key,
+            CAST(m.team_a_id  AS BIGINT) AS team_a_id,
+            CAST(m.team_b_id  AS BIGINT) AS team_b_id,
+            m.start_at,
+            m.start_at_local,
+            CAST(m.start_at AS DATE)     AS match_date,
+            m.winner,
+            m.result_type,
+            m.venue_key
+        FROM read_parquet('{L1_DIM_MATCH}') m
+        LEFT JOIN read_parquet('{L1_TOURNAMENT}') t
+               ON CAST(t.tournament_id AS BIGINT) = CAST(m.tournament_id AS BIGINT);
     """)
     con.execute(f"""
         CREATE VIEW fact AS
@@ -148,18 +152,19 @@ def build_team_match_history(con: duckdb.DuckDBPyConnection) -> None:
         ),
         -- long form: one row per (match, side) with that team's identity + outcome
         sided AS (
-            SELECT match_id, match_date, tournament_id,
+            SELECT match_id, match_date, tournament_id, league_key,
                    team_a_id AS team_id, team_b_id AS opp_id, 'a' AS side, 'b' AS opp_side,
                    CASE WHEN winner='a' THEN 1 ELSE 0 END AS won
             FROM decided
             UNION ALL
-            SELECT match_id, match_date, tournament_id,
+            SELECT match_id, match_date, tournament_id, league_key,
                    team_b_id AS team_id, team_a_id AS opp_id, 'b' AS side, 'a' AS opp_side,
                    CASE WHEN winner='b' THEN 1 ELSE 0 END AS won
             FROM decided
         )
         SELECT
-            s.match_id, s.team_id, s.opp_id, s.match_date, s.tournament_id, s.won,
+            s.match_id, s.team_id, s.opp_id, s.match_date, s.tournament_id,
+            s.league_key, s.won,
             bat.total_runs  AS team_runs,
             bwl.total_runs  AS opp_runs,
             (bat.match_id IS NOT NULL) AS has_balls,
@@ -182,11 +187,11 @@ def build_targets(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("""
         CREATE TEMP TABLE targets AS
         SELECT match_id, team_a_id AS team_id, match_date AS as_of_date,
-               tournament_id, venue_key
+               tournament_id, league_key, venue_key
         FROM dim_match
         UNION ALL
         SELECT match_id, team_b_id AS team_id, match_date AS as_of_date,
-               tournament_id, venue_key
+               tournament_id, league_key, venue_key
         FROM dim_match;
     """)
 
@@ -216,7 +221,8 @@ def build_team_form(con: duckdb.DuckDBPyConnection):
         CREATE TEMP TABLE tf_last5 AS
         WITH ranked AS (
             SELECT t.match_id AS tgt_match_id, t.team_id AS tgt_team_id,
-                   t.as_of_date, t.tournament_id AS tgt_tournament_id, h.*,
+                   t.as_of_date, t.tournament_id AS tgt_tournament_id,
+                   t.league_key AS tgt_league_key, h.*,
                    ROW_NUMBER() OVER (
                        PARTITION BY t.match_id, t.team_id
                        ORDER BY h.match_date DESC, h.match_id DESC
@@ -227,36 +233,40 @@ def build_team_form(con: duckdb.DuckDBPyConnection):
                   AND h.match_date < t.as_of_date          -- STRICTLY before
         )
         SELECT tgt_match_id AS match_id, tgt_team_id AS team_id, as_of_date,
-               tgt_tournament_id AS tournament_id, 'last5' AS "window",
+               tgt_tournament_id AS tournament_id, tgt_league_key AS league_key,
+               'last5' AS "window",
                {_AGG_COLS}
         FROM ranked h
         WHERE h.match_id IS NULL OR h.rn <= 5              -- keep empty targets
-        GROUP BY tgt_match_id, tgt_team_id, as_of_date, tgt_tournament_id;
+        GROUP BY tgt_match_id, tgt_team_id, as_of_date, tgt_tournament_id,
+                 tgt_league_key;
     """)
 
-    # window='tournament' — team's completed matches in the SAME tournament before D.
+    # window='tournament' — team's completed matches in the SAME LEAGUE before D.
+    # Keyed on league_key (year-stripped), so IPL's 4 season ids form one
+    # coherent group (e.g. IPL-2025 form draws on all prior IPL seasons).
     con.execute(f"""
         CREATE TEMP TABLE tf_tourn AS
-        SELECT t.match_id, t.team_id, t.as_of_date, t.tournament_id,
+        SELECT t.match_id, t.team_id, t.as_of_date, t.tournament_id, t.league_key,
                'tournament' AS "window",
                {_AGG_COLS}
         FROM targets t
         LEFT JOIN team_match_history h
                ON h.team_id = t.team_id
-              AND h.tournament_id = t.tournament_id
+              AND h.league_key = t.league_key
               AND h.match_date < t.as_of_date              -- STRICTLY before
-        GROUP BY t.match_id, t.team_id, t.as_of_date, t.tournament_id;
+        GROUP BY t.match_id, t.team_id, t.as_of_date, t.tournament_id, t.league_key;
     """)
 
     return con.execute("""
-        SELECT match_id, team_id, as_of_date, tournament_id, "window",
+        SELECT match_id, team_id, as_of_date, tournament_id, league_key, "window",
                matches_in_window,
                rr_powerplay, rr_middle, rr_death,
                econ_powerplay, econ_middle, econ_death,
                win_pct, avg_margin
         FROM tf_last5
         UNION ALL
-        SELECT match_id, team_id, as_of_date, tournament_id, "window",
+        SELECT match_id, team_id, as_of_date, tournament_id, league_key, "window",
                matches_in_window,
                rr_powerplay, rr_middle, rr_death,
                econ_powerplay, econ_middle, econ_death,
@@ -461,6 +471,11 @@ def main() -> None:
             "dew_flag": "HEURISTIC (night session -> 1). No explicit dew field in source.",
             "day_night": "HEURISTIC from local start hour (>=15:00 -> day_night).",
             "odds": "mean vendor decimal price per match; bridge-linked priced T20-men only.",
+            "tournament_window": "team_form 'tournament' window groups by league_key "
+                                 "(year-stripped), so IPL's 4 season ids form one "
+                                 "coherent league group; league_key also carried as a column.",
+            "venue_dedupe": "reads revised L1 dim_venue (deduped) + remapped "
+                            "dim_match.venue_key; see venue_id_map.",
         },
         "row_counts": {name: int(len(df)) for name, df in datasets.items()},
     }

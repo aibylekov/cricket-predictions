@@ -30,6 +30,7 @@ L1 = ROOT / "data" / "lake" / "l1"
 L2 = ROOT / "data" / "lake" / "l2"
 
 DIM_MATCH = (L1 / "dim_match" / "dim_match.parquet").as_posix()
+DIM_TOURNAMENT = (L1 / "dim_tournament" / "dim_tournament.parquet").as_posix()
 TEAM_FORM = (L2 / "team_form" / "team_form.parquet").as_posix()
 VENUE_STATS = (L2 / "venue_stats" / "venue_stats.parquet").as_posix()
 
@@ -40,15 +41,19 @@ SAMPLE_N = 250
 def _con() -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
     # Completed = has a recorded outcome; dates at DATE granularity to match L2.
+    # league_key joined from dim_tournament (tournament window groups by league).
     con.execute(f"""
         CREATE VIEW decided AS
-        SELECT CAST(match_id AS BIGINT)   AS match_id,
-               CAST(team_a_id AS BIGINT)  AS team_a_id,
-               CAST(team_b_id AS BIGINT)  AS team_b_id,
-               CAST(tournament_id AS BIGINT) AS tournament_id,
-               CAST(start_at AS DATE)     AS match_date
-        FROM read_parquet('{DIM_MATCH}')
-        WHERE winner IS NOT NULL;
+        SELECT CAST(m.match_id AS BIGINT)   AS match_id,
+               CAST(m.team_a_id AS BIGINT)  AS team_a_id,
+               CAST(m.team_b_id AS BIGINT)  AS team_b_id,
+               CAST(m.tournament_id AS BIGINT) AS tournament_id,
+               t.league_key,
+               CAST(m.start_at AS DATE)     AS match_date
+        FROM read_parquet('{DIM_MATCH}') m
+        LEFT JOIN read_parquet('{DIM_TOURNAMENT}') t
+               ON CAST(t.tournament_id AS BIGINT) = CAST(m.tournament_id AS BIGINT)
+        WHERE m.winner IS NOT NULL;
     """)
     return con
 
@@ -65,15 +70,15 @@ def _independent_last5(con, team_id, as_of_date):
     """, [team_id, team_id, as_of_date]).fetchall()
 
 
-def _independent_tournament(con, team_id, tournament_id, as_of_date):
-    """Re-derive the team's completed same-tournament matches strictly before D."""
+def _independent_tournament(con, team_id, league_key, as_of_date):
+    """Re-derive the team's completed same-LEAGUE matches strictly before D."""
     return con.execute("""
         SELECT match_id, match_date
         FROM decided
         WHERE (team_a_id = ? OR team_b_id = ?)
-          AND tournament_id = ?
+          AND league_key IS NOT DISTINCT FROM ?
           AND match_date < ?
-    """, [team_id, team_id, tournament_id, as_of_date]).fetchall()
+    """, [team_id, team_id, league_key, as_of_date]).fetchall()
 
 
 def _sample(con, window, n):
@@ -81,7 +86,7 @@ def _sample(con, window, n):
     # filter in a subquery first, then sample exactly n of the matching rows.
     return con.execute(f"""
         SELECT match_id, team_id, CAST(as_of_date AS DATE), tournament_id,
-               matches_in_window
+               league_key, matches_in_window
         FROM (
             SELECT * FROM read_parquet('{TEAM_FORM}') WHERE "window" = ?
         )
@@ -94,11 +99,11 @@ def _check_team_form_window(con, window, derive_fn):
     assert rows, f"no team_form rows sampled for window={window}"
     leaks = []
     miscounts = []
-    for match_id, team_id, as_of, tourn, stored_n in rows:
+    for match_id, team_id, as_of, tourn, league_key, stored_n in rows:
         if window == "last5":
             contrib = derive_fn(con, team_id, as_of)
         else:
-            contrib = derive_fn(con, team_id, tourn, as_of)
+            contrib = derive_fn(con, team_id, league_key, as_of)
 
         # (A) every contributing match strictly before as_of_date
         for cm_id, cm_date in contrib:
