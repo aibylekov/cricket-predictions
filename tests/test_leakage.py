@@ -33,6 +33,7 @@ DIM_MATCH = (L1 / "dim_match" / "dim_match.parquet").as_posix()
 DIM_TOURNAMENT = (L1 / "dim_tournament" / "dim_tournament.parquet").as_posix()
 TEAM_FORM = (L2 / "team_form" / "team_form.parquet").as_posix()
 VENUE_STATS = (L2 / "venue_stats" / "venue_stats.parquet").as_posix()
+L3_FEATURES = (ROOT / "data" / "lake" / "l3" / "feature_rows" / "feature_rows.parquet").as_posix()
 
 # How many random snapshots to independently audit per window.
 SAMPLE_N = 250
@@ -167,7 +168,56 @@ def _check_venue_stats(con):
           f"0 leaks, all recounts matched.")
 
 
+def _check_l3(con):
+    """
+    Re-check the FINAL L3 table: for sampled rows, independently re-derive each
+    side's last5 + tournament(league) contributing matches from L1 and assert
+    (A) every contributing date is strictly < as_of_date, and (B) the recount
+    equals the home_/away_ matches_in_window stored on the L3 row.
+    """
+    rows = con.execute(f"""
+        SELECT match_id, CAST(as_of_date AS DATE), league_key,
+               home_team_id, away_team_id,
+               home_matches_in_window_last5, home_matches_in_window_tourn,
+               away_matches_in_window_last5, away_matches_in_window_tourn
+        FROM read_parquet('{L3_FEATURES}')
+        USING SAMPLE reservoir({SAMPLE_N} ROWS) REPEATABLE (42)
+    """).fetchall()
+    assert rows, "no L3 rows sampled"
+    leaks, miscounts = [], []
+    for (mid, as_of, lk, home_id, away_id,
+         h_l5, h_tn, a_l5, a_tn) in rows:
+        for side, tid, n_l5, n_tn in [("home", home_id, h_l5, h_tn),
+                                      ("away", away_id, a_l5, a_tn)]:
+            l5 = _independent_last5(con, tid, as_of)
+            tn = _independent_tournament(con, tid, lk, as_of)
+            for label, contrib, stored in [("last5", l5, n_l5), ("tourn", tn, n_tn)]:
+                for cm_id, cm_date in contrib:
+                    if not (cm_date < as_of):
+                        leaks.append((side, label, mid, tid, as_of, cm_id, cm_date))
+                if len(contrib) != stored:
+                    miscounts.append((side, label, mid, tid, as_of, len(contrib), stored))
+    assert not leaks, (
+        "LEAKAGE in L3: home_/away_ feature used match dated >= as_of_date:\n"
+        + "\n".join(f"  {s}/{lb} match={m} team={t} as_of={a} used={mm} dated={d}"
+                    for s, lb, m, t, a, mm, d in leaks[:20])
+    )
+    assert not miscounts, (
+        "COUNT MISMATCH in L3 (recount != stored matches_in_window):\n"
+        + "\n".join(f"  {s}/{lb} match={m} team={t} as_of={a} recount={r} stored={st}"
+                    for s, lb, m, t, a, r, st in miscounts[:20])
+    )
+    print(f"[L3 feature_rows] audited {len(rows)} rows x2 sides — "
+          f"0 leaks, all home_/away_ recounts matched.")
+
+
 # --- pytest entry points -------------------------------------------------
+def test_l3_no_leakage():
+    con = _con()
+    _check_l3(con)
+    con.close()
+
+
 def test_team_form_last5_no_leakage():
     con = _con()
     _check_team_form_window(con, "last5", _independent_last5)
@@ -193,5 +243,6 @@ if __name__ == "__main__":
     _check_team_form_window(con, "last5", _independent_last5)
     _check_team_form_window(con, "tournament", _independent_tournament)
     _check_venue_stats(con)
+    _check_l3(con)
     con.close()
-    print("\nLEAKAGE TEST: PASS — no snapshot uses data dated >= its as_of_date.")
+    print("\nLEAKAGE TEST: PASS — no snapshot (L2 or L3) uses data dated >= its as_of_date.")
