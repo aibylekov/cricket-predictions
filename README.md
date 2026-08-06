@@ -291,15 +291,32 @@ git push -u origin main
     · L3 leakage re-check: PASS. Никакви редове изхвърлени (липси = NULL).
 - ✅ Целият data слой (скриптове + тестове) на GitHub; Parquet gitignore-нат.
 
-**Пренесени задачи за Фаза 2 (записани в L3 manifest):**
+- ✅ Фаза 2: validation harness (walk-forward, PASS self-test) + baselines
+    + logistic v1/v2.
+    · Модел v2 (C=0.01): НАЙ-ДОБЪР оценител на вероятности (log_loss 0.6849
+      / brier 0.2457, бие form_favourite 0.6888 / 0.2473). Accuracy 55.0%
+      срещу 57.3% на летвата — приет компромис (calibration-first за
+      confidence framing).
+    · Калибрация: средните кофи почти точни (60-70% → 63.9% реално).
+      Дефект: 20-40% диапазонът песимистичен (малки n).
+    · IPL: непобеден от нищо; калибрацията там ОБЪРНАТА (анти-сигнал);
+      моделът сам научи да дисконтира IPL home етикета (−0.047).
+      ИЗВОД: следващата IPL печалба е ДАННИ (playing XI / availability =
+      Level 1 фундаментален слой), не моделиране.
+    · Линеен таван достигнат — league/gap фичъри добавиха ~нищо след
+      регуляризацията.
+
+**Пренесени задачи (записани в L3 manifest):**
 - TEAM-LEVEL ODDS BRIDGE: подравняване на odds home/away с нашия home_team
   (61-те priced мача; ориентацията още непотвърдена).
-- Tournament-aware accuracy reporting (отделен % по league_key, IPL водещ).
 - Известни приети ограничения: day_night timezone евристика; is_neutral_venue
   хваща само международни неутрални венюта.
 
-🟨 Следва: Фаза 2 — validation harness ПЪРВО (walk-forward split, log loss /
-Brier / calibration / accuracy), после odds-baseline + baseline модел.
+🟨 Следва (по избор): (а) Level 1 фундаментален слой (Roanuz lineup
+endpoint + availability фичъри) — атакува IPL директно; (б) нелинеен
+модел (GBM) на същите фичъри; (в) Фаза 3 — confidence & framing +
+content generator върху текущия v2 модел (той вече е калибриран =
+готов за framing).
 
 ---
 
