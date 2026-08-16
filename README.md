@@ -270,10 +270,10 @@ git push -u origin main
       историческа цена. Live feed-ът ще трупа още odds занапред.
 
 ### Фаза 3 — Прогноза → статия (скелетът оживява, локално)
-- ⬜ 3.1 Confidence & framing (вероятност → лента увереност + рамка тон).
-- ⬜ 3.2 Prediction payload schema (само числа, без проза).
-- ⬜ 3.3 Content generator (Claude пълни guide-шаблона; не измисля нищо).
-- ⬜ 3.4 Human review + publish.
+- ✅ 3.1 Confidence & framing (вероятност → лента увереност + рамка тон).
+- ✅ 3.2 Prediction payload schema (само числа, без проза).
+- ✅ 3.3 Content generator (итерация 2 — виж статуса по-долу).
+- ⬜ 3.4 Human review + publish (следващо: home-grounds review ingest).
 - **Готово, когато:** статията съдържа само числа, налични в payload-а.
 
 ### Фаза 4 — Автоматизация (GitHub Actions)
@@ -312,11 +312,41 @@ git push -u origin main
 - Известни приети ограничения: day_night timezone евристика; is_neutral_venue
   хваща само международни неутрални венюта.
 
+- ✅ ФАЗА 3: CONTENT GENERATOR — ИТЕРАЦИЯ 2 ЗАВЪРШЕНА (player/standings/
+    context enrichment, dual toss modes, home-ground деривация, house
+    style mechanically enforced).
+    · Генерация: OpenAI API (gpt-4o, temperature 0.7 — стилът иска
+      вариация в ритъма), промптът е version-controlled
+      (src/content/prompt_template.py) с три разделени роли: FACTS (само
+      от payload) / STRUCTURE (TopBookies guide) / STYLE (human-writing
+      ruleset + къщни правила + къщен глас от style_profile.md,
+      калибриран от docs/voice samples/ 01–04).
+    · Payload enrichment (L2, point-in-time, leakage-проверено):
+      player_form (top 3 batters/bowlers на отбор; източник: L0 score
+      таблици през cricket__players roster join — НЕ ball-by-ball
+      comment parse), standings (ДЕРИВИРАНИ от dim_match; суровата
+      cricket__tournament_points е current-state-only), match_context
+      (номер на мач в турнира, номер на среща в серията, last5 резултати
+      с опоненти и маржове), current_event прозорец в team_form,
+      home_ground деривация (>=10 мача И >=30% дял на venue =
+      HIGH-confidence gate за "home advantage" в прозата).
+    · Toss lifecycle: pre_toss (toss-ът МЕХАНИЧНО премахнат от payload-а
+      + „ако X спечели тоса / ако Y" сценарии) | post_toss.
+    · Механични проверки при генерация (retry loop, max 2 поправки):
+      номера само от payload (+ производни win counts), нула em dashes,
+      целият Part E banned списък, къщни термини (вкл. "net run rate",
+      "our model"), win-проценти само с брой мачове в изречението, без
+      3+ десетични знака.
+    · Leakage: 8/8 проверки PASS (пълен max_source_date одит + 250
+      независими преизчисления на dataset).
+    · docs/home-grounds-review.csv (813 реда: 127 high / 212 medium):
+      чака редакторски human_decision; при връщане decision-ът става
+      авторитетен (override на деривацията, bridge_entity-стил).
+
 🟨 Следва (по избор): (а) Level 1 фундаментален слой (Roanuz lineup
 endpoint + availability фичъри) — атакува IPL директно; (б) нелинеен
-модел (GBM) на същите фичъри; (в) Фаза 3 — confidence & framing +
-content generator върху текущия v2 модел (той вече е калибриран =
-готов за framing).
+модел (GBM) на същите фичъри; (в) Фаза 3.4 — human review + publish +
+home-grounds review ingest.
 
 ---
 
