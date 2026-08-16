@@ -54,6 +54,7 @@ TABLES: list[str] = [
     "cricket__teams",
     "cricket__players",
     "cricket__tournaments",
+    "cricket__tournament_points",
     "cricket__associations",
     # Pre-aggregated stats
     "cricket__player_batting_scores",

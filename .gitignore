@@ -10,6 +10,7 @@ __pycache__/
 data/raw/
 data/derived/
 data/lake/
+data/articles/
 Thumbs.db
 .DS_Store
 .vscode/

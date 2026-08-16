@@ -15,11 +15,62 @@ D = date(M.start_at), we emit a pre-match snapshot for each of the two
 participating teams, as_of_date = D. Future matches are valid targets; their
 snapshot simply uses only past completed data.
 
-Datasets produced (MVP, team-level only — no player/matchup aggregates):
+Datasets produced:
   1) team_form       grain (match_id, team_id, window)   [as_of_date carried]
+                     windows: last5 | tournament (league_key-scoped, model
+                     feature) | current_event (tournament_id-scoped, content
+                     layer: "this season/tour so far"; L3 ignores it)
   2) venue_stats     grain (venue_key, as_of_date)
   3) match_conditions grain (match_id)
   4) match_odds_devig grain (match_id)  — bridge-linked priced T20-men only
+  5) player_form     grain (match_id, team_id, player_key, window)
+                     [iteration 2, content layer] windows: last5 (the TEAM's
+                     last 5 completed matches) | current_event.
+                     SOURCE CHOICE (documented): L0 player_batting_scores /
+                     player_bowling_scores joined via the cricket__players
+                     per-match roster (score.player_id -> players.id, 100%
+                     join coverage, real ids). NOT the L1 ball-by-ball
+                     comment parse: that covers only ~2218/4036 completed
+                     matches and rests on name-string parsing. The score
+                     tables are the cleaner source by both coverage and
+                     linkage. Note cricket__players.playing_xi is NOT read
+                     here (leakage rule README §1.3): only realized score
+                     rows of completed past matches contribute.
+  6) standings       grain (tournament_id, as_of_date, team_id)
+                     [iteration 2, content layer] DERIVED from dim_match
+                     decided results, point-in-time. The raw
+                     cricket__tournament_points table is a CURRENT-STATE
+                     snapshot updated in place (verified: exactly 1 row per
+                     (tournament_id, team_code), rolling updated_at) and is
+                     therefore unusable for as-of-date standings. Derivation
+                     convention: points = 2 * wins, decided matches only
+                     (ties/no-results excluded — rare in T20); position
+                     ranks by points, wins, then ball-data run differential
+                     (NRR proxy; official NRR is not derivable for matches
+                     without ball coverage). Positions are therefore
+                     approximate around NRR-decided ties.
+
+  7) home_ground     grain (match_id, team_id)
+                     [iteration 2b, content layer] Is the TARGET match's
+                     venue this team's own ground? Derived point-in-time
+                     from the team's completed same-league matches strictly
+                     before as_of_date: is_home_ground = the team has
+                     played >= 10 prior league matches AT this venue AND
+                     that venue holds >= 30% of its prior league matches
+                     (HIGH-confidence gate; thresholds at
+                     HOME_GROUND_MIN_*; a team may qualify at more than
+                     one venue, e.g. after a ground move).
+                     NOTE: the task brief said "derive in L1", but a static
+                     L1 table would leak (an early-season signal would see
+                     future matches). Same derivation, made point-in-time,
+                     lives here instead. International sides rotating
+                     grounds rarely reach 30% at one venue and fall to
+                     is_home_ground = false with counts shown - the signal
+                     targets franchise-league grounds specifically.
+
+player_form, standings and home_ground carry a max_source_date audit
+column so the leakage test can mechanically assert max_source_date <
+as_of_date per row.
 
 Run:
   venv/Scripts/python.exe -m src.data.build_l2
@@ -47,6 +98,9 @@ L1_TOURNAMENT = (L1 / "dim_tournament" / "dim_tournament.parquet").as_posix()
 L1_MATCH_BRIDGE = (L1 / "bridge" / "match_bridge.parquet").as_posix()
 L0_ODDS = (L0 / "odd_match_odds" / "*.parquet").as_posix()
 L0_MATCHES = (L0 / "cricket__matches" / "*.parquet").as_posix()
+L0_PLAYERS = (L0 / "cricket__players" / "*.parquet").as_posix()
+L0_BAT_SCORES = (L0 / "cricket__player_batting_scores" / "*.parquet").as_posix()
+L0_BOWL_SCORES = (L0 / "cricket__player_bowling_scores" / "*.parquet").as_posix()
 
 # Phase boundaries (over_number is 1..20 in this data)
 #   powerplay = overs 1-6, middle = overs 7-15, death = overs 16-20
@@ -258,6 +312,23 @@ def build_team_form(con: duckdb.DuckDBPyConnection):
         GROUP BY t.match_id, t.team_id, t.as_of_date, t.tournament_id, t.league_key;
     """)
 
+    # window='current_event' — completed matches in the SAME tournament_id
+    # (the single current season/tour) strictly before D. Content-layer
+    # window ("this tour so far"); the model keeps the league_key window,
+    # and build_l3 pivots only last5/tournament so L3 is unaffected.
+    con.execute(f"""
+        CREATE TEMP TABLE tf_event AS
+        SELECT t.match_id, t.team_id, t.as_of_date, t.tournament_id, t.league_key,
+               'current_event' AS "window",
+               {_AGG_COLS}
+        FROM targets t
+        LEFT JOIN team_match_history h
+               ON h.team_id = t.team_id
+              AND h.tournament_id = t.tournament_id
+              AND h.match_date < t.as_of_date              -- STRICTLY before
+        GROUP BY t.match_id, t.team_id, t.as_of_date, t.tournament_id, t.league_key;
+    """)
+
     return con.execute("""
         SELECT match_id, team_id, as_of_date, tournament_id, league_key, "window",
                matches_in_window,
@@ -272,6 +343,13 @@ def build_team_form(con: duckdb.DuckDBPyConnection):
                econ_powerplay, econ_middle, econ_death,
                win_pct, avg_margin
         FROM tf_tourn
+        UNION ALL
+        SELECT match_id, team_id, as_of_date, tournament_id, league_key, "window",
+               matches_in_window,
+               rr_powerplay, rr_middle, rr_death,
+               econ_powerplay, econ_middle, econ_death,
+               win_pct, avg_margin
+        FROM tf_event
         ORDER BY match_id, team_id, "window";
     """).df()
 
@@ -410,6 +488,226 @@ def build_match_odds_devig(con: duckdb.DuckDBPyConnection):
 
 
 # --------------------------------------------------------------------------
+# 5) player_form  (iteration 2, content layer)
+# --------------------------------------------------------------------------
+def build_player_form(con: duckdb.DuckDBPyConnection):
+    """
+    Point-in-time per-player form, per (target match, team, window).
+
+    Source: L0 pre-aggregated score tables joined through the
+    cricket__players per-match roster (see module docstring for why this
+    beats the ball-by-ball comment parse). Player identity = the roster
+    `key` (stable across matches, matches dim_player.player_key).
+
+    Batting: runs, balls, innings, strike_rate (100*runs/balls).
+    Bowling: wickets, overs (balls/6, decimal overs), economy
+    (runs per 6 legal-ball over as recorded by the source).
+    """
+    # one row per (match, team, player) with that match's realized scores
+    con.execute(f"""
+        CREATE TEMP TABLE player_match_scores AS
+        WITH bat AS (
+            SELECT player_id, SUM(runs) AS runs, SUM(balls) AS balls,
+                   COUNT(*) AS innings
+            FROM read_parquet('{L0_BAT_SCORES}') GROUP BY player_id
+        ),
+        bowl AS (
+            SELECT player_id, SUM(wickets) AS wickets, SUM(balls) AS balls,
+                   SUM(runs) AS runs, COUNT(*) AS innings
+            FROM read_parquet('{L0_BOWL_SCORES}') GROUP BY player_id
+        )
+        SELECT
+            CAST(p.match_id AS BIGINT) AS match_id,
+            CAST(p.team_id  AS BIGINT) AS team_id,
+            p.key                      AS player_key,
+            MAX(p.name)                AS player_name,
+            SUM(b.runs)                AS bat_runs,
+            SUM(b.balls)               AS bat_balls,
+            SUM(b.innings)             AS bat_innings,
+            SUM(w.wickets)             AS wickets,
+            SUM(w.balls)               AS bowl_balls,
+            SUM(w.runs)                AS bowl_runs,
+            SUM(w.innings)             AS bowl_innings
+        FROM read_parquet('{L0_PLAYERS}') p
+        LEFT JOIN bat  b ON b.player_id = p.id
+        LEFT JOIN bowl w ON w.player_id = p.id
+        WHERE b.player_id IS NOT NULL OR w.player_id IS NOT NULL
+        GROUP BY 1, 2, 3;
+    """)
+
+    _pf_aggs = """
+            COUNT(*)                                              AS matches_in_window,
+            SUM(s.bat_runs)                                       AS bat_runs,
+            SUM(s.bat_balls)                                      AS bat_balls,
+            SUM(s.bat_innings)                                    AS bat_innings,
+            100.0 * SUM(s.bat_runs) / NULLIF(SUM(s.bat_balls),0)  AS strike_rate,
+            SUM(s.wickets)                                        AS wickets,
+            SUM(s.bowl_balls) / 6.0                               AS overs,
+            SUM(s.bowl_runs) / NULLIF(SUM(s.bowl_balls)/6.0, 0)   AS economy,
+            SUM(s.bowl_innings)                                   AS bowl_innings
+    """
+
+    # window='last5': the TEAM's last 5 completed matches strictly before D
+    con.execute(f"""
+        CREATE TEMP TABLE pf_last5 AS
+        WITH ranked AS (
+            SELECT t.match_id AS tgt_match_id, t.team_id AS tgt_team_id,
+                   t.as_of_date,
+                   h.match_id AS hist_match_id, h.match_date AS hist_date,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY t.match_id, t.team_id
+                       ORDER BY h.match_date DESC, h.match_id DESC
+                   ) AS rn
+            FROM targets t
+            JOIN team_match_history h
+              ON h.team_id = t.team_id
+             AND h.match_date < t.as_of_date               -- STRICTLY before
+        )
+        SELECT r.tgt_match_id AS match_id, r.tgt_team_id AS team_id,
+               r.as_of_date, s.player_key,
+               MAX(s.player_name) AS player_name,
+               'last5' AS "window",
+               {_pf_aggs},
+               MAX(r.hist_date) AS max_source_date
+        FROM ranked r
+        JOIN player_match_scores s
+          ON s.match_id = r.hist_match_id AND s.team_id = r.tgt_team_id
+        WHERE r.rn <= 5
+        GROUP BY r.tgt_match_id, r.tgt_team_id, r.as_of_date, s.player_key;
+    """)
+
+    # window='current_event': same tournament_id, strictly before D
+    con.execute(f"""
+        CREATE TEMP TABLE pf_event AS
+        SELECT t.match_id, t.team_id, t.as_of_date, s.player_key,
+               MAX(s.player_name) AS player_name,
+               'current_event' AS "window",
+               {_pf_aggs},
+               MAX(h.match_date) AS max_source_date
+        FROM targets t
+        JOIN team_match_history h
+          ON h.team_id = t.team_id
+         AND h.tournament_id = t.tournament_id
+         AND h.match_date < t.as_of_date                   -- STRICTLY before
+        JOIN player_match_scores s
+          ON s.match_id = h.match_id AND s.team_id = t.team_id
+        GROUP BY t.match_id, t.team_id, t.as_of_date, s.player_key;
+    """)
+
+    return con.execute("""
+        SELECT * FROM pf_last5
+        UNION ALL
+        SELECT * FROM pf_event
+        ORDER BY match_id, team_id, "window", player_key;
+    """).df()
+
+
+# --------------------------------------------------------------------------
+# 6) standings  (iteration 2, content layer)
+# --------------------------------------------------------------------------
+def build_standings(con: duckdb.DuckDBPyConnection):
+    """
+    Point-in-time standings per (tournament_id, as_of_date, team_id),
+    DERIVED from dim_match decided results (see module docstring for why
+    the raw tournament_points table cannot be used). Standings as of the
+    day before: strictly-before match_date = everything through D-1.
+
+    Convention: points = 2 * wins over DECIDED matches only (ties and
+    no-results excluded; standard T20 league scoring, minus the rare
+    1-point NR which the source cannot attribute cleanly). position ranks
+    points desc, wins desc, run_diff desc (ball-data NRR proxy; NULL where
+    no ball coverage) then team_id for determinism. n_teams_in_event comes
+    from the full schedule, so it's stable across as_of dates.
+    """
+    return con.execute("""
+        WITH tgt AS (
+            SELECT DISTINCT tournament_id, match_date AS as_of_date
+            FROM dim_match
+        ),
+        event_teams AS (
+            SELECT tournament_id, COUNT(DISTINCT team_id) AS n_teams_in_event
+            FROM (
+                SELECT tournament_id, team_a_id AS team_id FROM dim_match
+                UNION
+                SELECT tournament_id, team_b_id FROM dim_match
+            )
+            GROUP BY tournament_id
+        ),
+        agg AS (
+            SELECT t.tournament_id, t.as_of_date, h.team_id,
+                   COUNT(*)                      AS played,
+                   SUM(h.won)                    AS won,
+                   COUNT(*) - SUM(h.won)         AS lost,
+                   2 * SUM(h.won)                AS points,
+                   SUM(h.team_runs - h.opp_runs) AS run_diff,
+                   MAX(h.match_date)             AS max_source_date
+            FROM tgt t
+            JOIN team_match_history h
+              ON h.tournament_id = t.tournament_id
+             AND h.match_date < t.as_of_date               -- STRICTLY before
+            GROUP BY t.tournament_id, t.as_of_date, h.team_id
+        )
+        SELECT a.*,
+               ROW_NUMBER() OVER (
+                   PARTITION BY a.tournament_id, a.as_of_date
+                   ORDER BY a.points DESC, a.won DESC,
+                            a.run_diff DESC NULLS LAST, a.team_id
+               ) AS position,
+               e.n_teams_in_event
+        FROM agg a
+        JOIN event_teams e ON e.tournament_id = a.tournament_id
+        ORDER BY a.tournament_id, a.as_of_date, position;
+    """).df()
+
+
+# --------------------------------------------------------------------------
+# 7) home_ground  (iteration 2b, content layer)
+# --------------------------------------------------------------------------
+# HIGH-confidence gate: home-advantage prose is allowed only for teams that
+# clear this bar (or are later human-confirmed via docs/home-grounds-review
+# .csv - see src/data/export_home_grounds_review.py). Medium-confidence
+# derivations (5-9 matches at >=30%) appear in that review file but do NOT
+# set is_home_ground until the editor confirms them.
+HOME_GROUND_MIN_MATCHES = 10     # >= this many prior league matches AT venue
+HOME_GROUND_MIN_SHARE = 0.30     # AND >= this share of prior league matches
+
+
+def build_home_ground(con: duckdb.DuckDBPyConnection):
+    """
+    Per (target match, team): is the target venue this team's own ground,
+    judged ONLY on completed same-league matches strictly before as_of_date
+    (thresholds above; rationale in the module docstring).
+    """
+    return con.execute(f"""
+        WITH hist AS (
+            SELECT h.team_id, h.league_key, h.match_date, d.venue_key
+            FROM team_match_history h
+            JOIN dim_match d ON d.match_id = h.match_id
+        )
+        SELECT
+            t.match_id, t.team_id, t.as_of_date, t.venue_key,
+            COUNT(h.match_date)                            AS league_matches_before,
+            SUM(CASE WHEN h.venue_key = t.venue_key
+                     THEN 1 ELSE 0 END)                    AS at_venue_before,
+            SUM(CASE WHEN h.venue_key = t.venue_key THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(h.match_date), 0)::DOUBLE   AS venue_share,
+            (SUM(CASE WHEN h.venue_key = t.venue_key THEN 1 ELSE 0 END)
+                 >= {HOME_GROUND_MIN_MATCHES}
+             AND SUM(CASE WHEN h.venue_key = t.venue_key THEN 1 ELSE 0 END)
+                 >= {HOME_GROUND_MIN_SHARE} * COUNT(h.match_date))
+                                                           AS is_home_ground,
+            MAX(h.match_date)                              AS max_source_date
+        FROM targets t
+        LEFT JOIN hist h
+               ON h.team_id = t.team_id
+              AND h.league_key IS NOT DISTINCT FROM t.league_key
+              AND h.match_date < t.as_of_date              -- STRICTLY before
+        GROUP BY t.match_id, t.team_id, t.as_of_date, t.venue_key
+        ORDER BY t.match_id, t.team_id;
+    """).df()
+
+
+# --------------------------------------------------------------------------
 # Write helpers + main
 # --------------------------------------------------------------------------
 def write_parquet(con: duckdb.DuckDBPyConnection, df, name: str) -> str:
@@ -439,12 +737,21 @@ def main() -> None:
     match_conditions = build_match_conditions(con)
     print("Building match_odds_devig ...")
     match_odds_devig = build_match_odds_devig(con)
+    print("Building player_form ...")
+    player_form = build_player_form(con)
+    print("Building standings ...")
+    standings = build_standings(con)
+    print("Building home_ground ...")
+    home_ground = build_home_ground(con)
 
     datasets = {
         "team_form": team_form,
         "venue_stats": venue_stats,
         "match_conditions": match_conditions,
         "match_odds_devig": match_odds_devig,
+        "player_form": player_form,
+        "standings": standings,
+        "home_ground": home_ground,
     }
     for name, df in datasets.items():
         path = write_parquet(con, df, name)
@@ -476,6 +783,28 @@ def main() -> None:
                                  "coherent league group; league_key also carried as a column.",
             "venue_dedupe": "reads revised L1 dim_venue (deduped) + remapped "
                             "dim_match.venue_key; see venue_id_map.",
+            "current_event_window": "team_form/player_form window scoped to "
+                                    "tournament_id (this season/tour only); "
+                                    "content layer, ignored by build_l3.",
+            "player_form_source": "L0 player_batting/bowling_scores via "
+                                  "cricket__players roster join (100% id "
+                                  "linkage); NOT the ball-by-ball comment "
+                                  "parse (~55% match coverage). playing_xi "
+                                  "never read (leakage rule).",
+            "standings": "DERIVED from dim_match decided results; raw "
+                         "cricket__tournament_points is current-state-only "
+                         "(1 row per tournament+team, updated in place) and "
+                         "cannot give as-of-date tables. points=2*wins, "
+                         "decided only; position tie-break uses ball-data "
+                         "run_diff as NRR proxy -> approximate around "
+                         "NRR-decided ties.",
+            "home_ground": "point-in-time: venue is a team's own ground when "
+                           f">= {HOME_GROUND_MIN_MATCHES} prior same-league "
+                           f"matches there AND >= {HOME_GROUND_MIN_SHARE:.0%} "
+                           "of prior league matches; content layer.",
+            "max_source_date": "audit column on player_form/standings/"
+                               "home_ground rows; leakage test asserts it "
+                               "< as_of_date.",
         },
         "row_counts": {name: int(len(df)) for name, df in datasets.items()},
     }
