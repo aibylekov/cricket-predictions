@@ -16,7 +16,7 @@ python-dotenv>=1.0
 pymysql>=1.1
 
 # Content generation
-anthropic>=0.28
+openai>=3.0
 
 # CLI / utilities
 tqdm>=4.66
