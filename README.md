@@ -427,9 +427,10 @@ git push -u origin main
       след затягането на win-pair/жаргон проверките).
       Bundle: docs/demo_drafts_review_v4.md.
 
-- 🟨 ИТЕРАЦИЯ 5 (AUTHOR STYLE ROTATION — един къщен глас → 8 ротиращи
-    авторски гласа срещу повторяемостта между статиите; чака редакторски
-    преглед на demo drafts преди commit):
+- ✅ ИТЕРАЦИЯ 5 (AUTHOR STYLE ROTATION — един къщен глас → 8 ротиращи
+    авторски гласа срещу повторяемостта между статиите; редакторът одобри
+    v5 с допълнения -> 5b по-долу; ROTATION LIVE: 8 профила, shuffled-deck,
+    draft-only style notes, rotation audit):
     · ПРОФИЛИ: docs/author-styles/author-01..08-*.md (изчистени реални
       статии по автор) → src/content/calibrate_author.py (Style
       Calibration анализ, ruleset Part 4 — същият като за къщния профил)
@@ -479,6 +480,37 @@ git push -u origin main
       различни профила; останали в тестето 5.
     · Bundle: docs/demo_drafts_review_v5.md (drafts + reports + трите
       използвани профила) чрез src/content/export_review_bundle.py 5.
+    · 5b (редакторски verdict на v5, 23.10.2026):
+      - DRAFT-ONLY AUTHOR NOTE: всеки draft (data/articles/*_draft.md и
+        review bundle-ите) завършва с "---" + "NOTE: Written in author
+        style: author-07 (Manish K.) | rotation deck position N/8" (добавя
+        се СЛЕД валидацията). src/publish.py: prepare_for_publish() маха
+        header-а + footer-а механично, после guard върху финалния текст
+        (author-NN, "written in author style", "rotation deck", validation
+        stamp, "<!--") -> PublishGuardError; publish() праща само чист текст.
+      - ROTATION AUDIT: python -m src.content.author_rotation audit [--json]
+        -> история (seq, match_id, day, author, deck position), per-deck
+        cycle check (всяко тесте раздава всички 8 преди повторение; без
+        повторение на шева), текущо тесте. State пази deck_position/
+        deck_size/seq + история на тестетата (стари записи: позицията се
+        извежда). Генераторът печата одита в края; bundle-ът го включва.
+      - MIRROR FACTS (механично): един result set (същите мачове) = един
+        факт, независимо от отбора/глагола ("England winning all 3" +
+        "India losing all 3" = 1 факт; "won 4 of 5" + "lost 1 of 5" = 1);
+        cap: веднъж в Key Points, веднъж другаде.
+      - HOME SCOPE (механично): "at home"/"home record"/"home form"... +
+        win/loss брой = само home-scoped числа (last5 мачове на ТОЗИ
+        терен за отбор с at_own_ground); сезонен 10/16 -> "season record".
+      - TERMINOLOGY GLOSSARY (prompt_template.TERMINOLOGY, механично):
+        'strike rate', никога 'striking rate'.
+      - Регресия: трите v5 drafts гърмят точно на трите посочени места и
+        на нищо друго; числа с думи ("all three") се хващат също;
+        tests/test_iteration5b.py (19 теста).
+      - DEMO v6 (същите три мача, същите persisted автори 08/04/07, тестето
+        не мръдна): 3/3 PASSED след 1-2 поправки; новите проверки уловиха
+        реален повтор в 8731 ("three consecutive wins" + "all three T20s in
+        this series"). Footer-ите видими в draft-овете; publish guard PASS
+        на трите. Bundle: docs/demo_drafts_review_v6.md (+ rotation audit).
 
 - ✅ SCOPE WIDENING: T20 МЪЖЕ + ЖЕНИ (цел: WBBL 2026) + SPRING CHALLENGE 2026
     INGEST (23.10.2026; leakage 11/11 PASS; merge + entity-watch репортите
