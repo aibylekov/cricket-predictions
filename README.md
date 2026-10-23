@@ -503,8 +503,9 @@ git push -u origin main
       - HOME SCOPE (механично): "at home"/"home record"/"home form"... +
         win/loss брой = само home-scoped числа (last5 мачове на ТОЗИ
         терен за отбор с at_own_ground); сезонен 10/16 -> "season record".
-      - docs/voice samples/ и docs/author-styles/ са в .gitignore (voice
-        samples untracked; 8-те author-styles файла остават tracked).
+      - docs/voice samples/ и docs/author-styles/ са local-only (gitignored,
+        untracked; историята не е пренаписана). Leak re-run тестът срещу
+        източниците се skip-ва, когато docs/author-styles/ липсва (clone/CI).
       - TERMINOLOGY GLOSSARY (prompt_template.TERMINOLOGY, механично):
         'strike rate', никога 'striking rate'.
       - Регресия: трите v5 drafts гърмят точно на трите посочени места и

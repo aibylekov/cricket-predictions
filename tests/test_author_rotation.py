@@ -70,8 +70,19 @@ def test_profile_is_complete_and_leak_free(author_id):
     for head in SECTION_HEADS:
         assert head in text, f"{author_id}: missing section {head}"
     assert profile_display_name(author_id) != author_id
-    # independent re-run of the leak check against the source articles
-    src = next(SOURCE_DIR.glob(f"{author_id}-*.md"))
+
+
+@pytest.mark.parametrize("author_id", PROFILES)
+def test_profile_leak_check_against_source(author_id):
+    """Independent re-run of the leak check against the source articles.
+    docs/author-styles/ is local-only (gitignored, not in the repo), so on a
+    clone without it this skips; the profile's own LEAK CHECK: PASSED stamp
+    is still asserted above."""
+    src = next(SOURCE_DIR.glob(f"{author_id}-*.md"), None)
+    if src is None:
+        pytest.skip(f"source articles for {author_id} not present in "
+                    f"{SOURCE_DIR} (local-only, gitignored)")
+    text = load_profile(author_id)
     inv = entity_inventory(read_source(src)[1])
     for kind in ("teams", "players"):
         for ent in inv[kind]:
