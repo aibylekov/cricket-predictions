@@ -1,0 +1,1741 @@
+{
+  "generated": "2026-10-23T14:34:36",
+  "candidate": "v3.1",
+  "data": {
+    "league_keys": 275,
+    "note": "league_key aliases applied (revise_l1.LEAGUE_KEY_ALIASES); U19 WWC 2025 duplicate ids 911/912 flagged, not dropped"
+  },
+  "completed_matches": {
+    "all": 5286,
+    "male": 4036,
+    "female": 1250
+  },
+  "common_set": {
+    "all": 5073,
+    "male": 3924,
+    "female": 1149,
+    "first_date": "2023-05-01",
+    "last_date": "2026-10-21"
+  },
+  "pooled_only_coverage": {
+    "matches": 101,
+    "by_gender": {
+      "female": 101
+    },
+    "wbbl": 57
+  },
+  "band_config": {
+    "confident": 0.65,
+    "moderate": 0.55
+  },
+  "overall": {
+    "v2_per_gender": {
+      "n": 5073,
+      "accuracy": 0.5653459491425192,
+      "log_loss": 0.6780818450470637,
+      "brier": 0.24248021426310923,
+      "base_rate": 0.5399172087522176
+    },
+    "v3_1_pooled": {
+      "n": 5073,
+      "accuracy": 0.5716538537354623,
+      "log_loss": 0.6743858093005967,
+      "brier": 0.2407579196811469,
+      "base_rate": 0.5399172087522176
+    },
+    "form_favourite": {
+      "n": 5073,
+      "accuracy": 0.5870293711807609,
+      "log_loss": 0.6803123062175267,
+      "brier": 0.24322501323563483,
+      "base_rate": 0.5399172087522176
+    }
+  },
+  "by_gender": {
+    "male": {
+      "v2_per_gender": {
+        "n": 3924,
+        "accuracy": 0.5489296636085627,
+        "log_loss": 0.68480394626013,
+        "brier": 0.245670064310788,
+        "base_rate": 0.5293068297655453
+      },
+      "v3_1_pooled": {
+        "n": 3924,
+        "accuracy": 0.5563200815494393,
+        "log_loss": 0.68293554892269,
+        "brier": 0.2447947793255395,
+        "base_rate": 0.5293068297655453
+      },
+      "form_favourite": {
+        "n": 3924,
+        "accuracy": 0.5726299694189603,
+        "log_loss": 0.6887866714015097,
+        "brier": 0.2472513760807172,
+        "base_rate": 0.5293068297655453
+      }
+    },
+    "female": {
+      "v2_per_gender": {
+        "n": 1149,
+        "accuracy": 0.6214099216710183,
+        "log_loss": 0.6551249040896469,
+        "brier": 0.2315864182778252,
+        "base_rate": 0.5761531766753699
+      },
+      "v3_1_pooled": {
+        "n": 1149,
+        "accuracy": 0.6240208877284595,
+        "log_loss": 0.6451872207217504,
+        "brier": 0.22697146428985313,
+        "base_rate": 0.5761531766753699
+      },
+      "form_favourite": {
+        "n": 1149,
+        "accuracy": 0.6362053959965187,
+        "log_loss": 0.6513711321688328,
+        "brier": 0.2294744059213588,
+        "base_rate": 0.5761531766753699
+      }
+    }
+  },
+  "men_noise": {
+    "n": 3924,
+    "blocks": 39,
+    "d_log_loss": -0.0018683973374398798,
+    "d_log_loss_ci95": [
+      -0.0032838733612825764,
+      -0.0004956633924004695
+    ],
+    "d_brier": -0.0008752849852485178,
+    "d_brier_ci95": [
+      -0.0015807241572359887,
+      -0.00017718153435398865
+    ]
+  },
+  "women_vs_form": {
+    "n": 1149,
+    "blocks": 33,
+    "d_log_loss": -0.006183911447082398,
+    "d_log_loss_ci95": [
+      -0.02118712747695116,
+      0.009879945559060382
+    ],
+    "d_brier": -0.0025029416315056276,
+    "d_brier_ci95": [
+      -0.009519400919295562,
+      0.004888626040777052
+    ]
+  },
+  "women_vs_v2": {
+    "n": 1149,
+    "blocks": 33,
+    "d_log_loss": -0.009937683367896447,
+    "d_log_loss_ci95": [
+      -0.024695547651876166,
+      0.0011947949587854175
+    ],
+    "d_brier": -0.004614953987972055,
+    "d_brier_ci95": [
+      -0.011723159431320612,
+      0.0007056747822001297
+    ]
+  },
+  "adoption": {
+    "men_no_degradation_beyond_noise": true,
+    "men_failed_metrics": [],
+    "women_beats_form_favourite": {
+      "log_loss": true,
+      "brier": true
+    },
+    "wbbl_matches_form_favourite": {
+      "log_loss": false,
+      "brier": false
+    },
+    "passes": false,
+    "note": "a PASS makes the candidate eligible; production stays v2 until the user approves the switch"
+  },
+  "per_league": [
+    {
+      "league_key": "vitality blast",
+      "gender": "male",
+      "n": 485,
+      "home_rate": 0.5051546391752577,
+      "v2_per_gender": {
+        "accuracy": 0.5175257731958763,
+        "log_loss": 0.6912858568381235,
+        "brier": 0.249013027716074
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5298969072164949,
+        "log_loss": 0.6913461210144803,
+        "brier": 0.24900582847053532
+      },
+      "form_favourite": {
+        "accuracy": 0.5793814432989691,
+        "log_loss": 0.6985812019718226,
+        "brier": 0.2519951050146567
+      }
+    },
+    {
+      "league_key": "indian premier league",
+      "gender": "male",
+      "n": 243,
+      "home_rate": 0.49794238683127573,
+      "v2_per_gender": {
+        "accuracy": 0.4444444444444444,
+        "log_loss": 0.7258024753981718,
+        "brier": 0.2658683917771639
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.4773662551440329,
+        "log_loss": 0.7166056543302995,
+        "brier": 0.2614340907685654
+      },
+      "form_favourite": {
+        "accuracy": 0.5185185185185185,
+        "log_loss": 0.7112121829574635,
+        "brier": 0.25811553183319885
+      }
+    },
+    {
+      "league_key": "syed mushtaq ali trophy",
+      "gender": "male",
+      "n": 154,
+      "home_rate": 0.6038961038961039,
+      "v2_per_gender": {
+        "accuracy": 0.538961038961039,
+        "log_loss": 0.6803241483066171,
+        "brier": 0.24359073191787134
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5714285714285714,
+        "log_loss": 0.6801174202398552,
+        "brier": 0.2434421893609033
+      },
+      "form_favourite": {
+        "accuracy": 0.564935064935065,
+        "log_loss": 0.7000891494841628,
+        "brier": 0.2523576700864329
+      }
+    },
+    {
+      "league_key": "maharaja trophy ksca",
+      "gender": "male",
+      "n": 128,
+      "home_rate": 0.4765625,
+      "v2_per_gender": {
+        "accuracy": 0.515625,
+        "log_loss": 0.6976383885392925,
+        "brier": 0.25224470553803935
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5390625,
+        "log_loss": 0.6980223727137679,
+        "brier": 0.25248839249629496
+      },
+      "form_favourite": {
+        "accuracy": 0.5546875,
+        "log_loss": 0.6805469723588926,
+        "brier": 0.24389790400373382
+      }
+    },
+    {
+      "league_key": "bangladesh premier league",
+      "gender": "male",
+      "n": 126,
+      "home_rate": 0.5,
+      "v2_per_gender": {
+        "accuracy": 0.5952380952380952,
+        "log_loss": 0.6703809360697328,
+        "brier": 0.2378660460412884
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5793650793650794,
+        "log_loss": 0.6702174476796461,
+        "brier": 0.23858680698651893
+      },
+      "form_favourite": {
+        "accuracy": 0.6190476190476191,
+        "log_loss": 0.644867744277853,
+        "brier": 0.22669580148909885
+      }
+    },
+    {
+      "league_key": "big bash league",
+      "gender": "male",
+      "n": 123,
+      "home_rate": 0.5853658536585366,
+      "v2_per_gender": {
+        "accuracy": 0.6178861788617886,
+        "log_loss": 0.6604847119064665,
+        "brier": 0.23404702426109616
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.6178861788617886,
+        "log_loss": 0.6621591276060413,
+        "brier": 0.2346659762906518
+      },
+      "form_favourite": {
+        "accuracy": 0.5447154471544715,
+        "log_loss": 0.6802105506608662,
+        "brier": 0.24385396992428615
+      }
+    },
+    {
+      "league_key": "csa challenge",
+      "gender": "male",
+      "n": 115,
+      "home_rate": 0.5130434782608696,
+      "v2_per_gender": {
+        "accuracy": 0.5739130434782609,
+        "log_loss": 0.6926031893010073,
+        "brier": 0.2488129481705747
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5478260869565217,
+        "log_loss": 0.6922273238065255,
+        "brier": 0.247816414074369
+      },
+      "form_favourite": {
+        "accuracy": 0.5565217391304348,
+        "log_loss": 0.67761261778202,
+        "brier": 0.24293664687684355
+      }
+    },
+    {
+      "league_key": "pakistan super league",
+      "gender": "male",
+      "n": 108,
+      "home_rate": 0.5,
+      "v2_per_gender": {
+        "accuracy": 0.5370370370370371,
+        "log_loss": 0.67835593026745,
+        "brier": 0.24281007356373482
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5462962962962963,
+        "log_loss": 0.6705597142011901,
+        "brier": 0.23908693377205323
+      },
+      "form_favourite": {
+        "accuracy": 0.5833333333333334,
+        "log_loss": 0.6685418375824573,
+        "brier": 0.238256876563836
+      }
+    },
+    {
+      "league_key": "icc men s world cup",
+      "gender": "male",
+      "n": 104,
+      "home_rate": 0.6923076923076923,
+      "v2_per_gender": {
+        "accuracy": 0.6634615384615384,
+        "log_loss": 0.606631259399764,
+        "brier": 0.2096359818323734
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.6538461538461539,
+        "log_loss": 0.6061172223331106,
+        "brier": 0.20936408764048695
+      },
+      "form_favourite": {
+        "accuracy": 0.7019230769230769,
+        "log_loss": 0.6285878602354124,
+        "brier": 0.21908120489059113
+      }
+    },
+    {
+      "league_key": "international league",
+      "gender": "male",
+      "n": 102,
+      "home_rate": 0.5196078431372549,
+      "v2_per_gender": {
+        "accuracy": 0.4411764705882353,
+        "log_loss": 0.7497875817439172,
+        "brier": 0.27397739349723205
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.4803921568627451,
+        "log_loss": 0.7405719331377385,
+        "brier": 0.27049747954259507
+      },
+      "form_favourite": {
+        "accuracy": 0.4803921568627451,
+        "log_loss": 0.7412293965072714,
+        "brier": 0.27188181433241054
+      }
+    },
+    {
+      "league_key": "vitality blast women",
+      "gender": "female",
+      "n": 99,
+      "home_rate": 0.5151515151515151,
+      "v2_per_gender": {
+        "accuracy": 0.6060606060606061,
+        "log_loss": 0.6686187635372589,
+        "brier": 0.23786676522106598
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.6464646464646465,
+        "log_loss": 0.6672624485994655,
+        "brier": 0.23720076012301755
+      },
+      "form_favourite": {
+        "accuracy": 0.6464646464646465,
+        "log_loss": 0.6492564483305696,
+        "brier": 0.2283070790200121
+      }
+    },
+    {
+      "league_key": "caribbean premier league",
+      "gender": "male",
+      "n": 94,
+      "home_rate": 0.5106382978723404,
+      "v2_per_gender": {
+        "accuracy": 0.5106382978723404,
+        "log_loss": 0.6941710366082695,
+        "brier": 0.2504195854021291
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.48936170212765956,
+        "log_loss": 0.6935050926092675,
+        "brier": 0.2501264749330555
+      },
+      "form_favourite": {
+        "accuracy": 0.5638297872340425,
+        "log_loss": 0.6690549658198272,
+        "brier": 0.23824163733399698
+      }
+    },
+    {
+      "league_key": "tamil nadu premier league",
+      "gender": "male",
+      "n": 94,
+      "home_rate": 0.5106382978723404,
+      "v2_per_gender": {
+        "accuracy": 0.5106382978723404,
+        "log_loss": 0.6957599151265594,
+        "brier": 0.2513125790431406
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5212765957446809,
+        "log_loss": 0.695330168119335,
+        "brier": 0.2510770429309669
+      },
+      "form_favourite": {
+        "accuracy": 0.574468085106383,
+        "log_loss": 0.6881989714993749,
+        "brier": 0.24727818759544626
+      }
+    },
+    {
+      "league_key": "sa league",
+      "gender": "male",
+      "n": 92,
+      "home_rate": 0.5543478260869565,
+      "v2_per_gender": {
+        "accuracy": 0.5,
+        "log_loss": 0.703708189391413,
+        "brier": 0.2550268087374603
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5652173913043478,
+        "log_loss": 0.6968342995304078,
+        "brier": 0.2510482143814735
+      },
+      "form_favourite": {
+        "accuracy": 0.5543478260869565,
+        "log_loss": 0.7281823918424287,
+        "brier": 0.2650970461436606
+      }
+    },
+    {
+      "league_key": "major league cricket",
+      "gender": "male",
+      "n": 86,
+      "home_rate": 0.46511627906976744,
+      "v2_per_gender": {
+        "accuracy": 0.6627906976744186,
+        "log_loss": 0.666915461161977,
+        "brier": 0.236833480943999
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.6511627906976745,
+        "log_loss": 0.6621815392814348,
+        "brier": 0.23457674551831204
+      },
+      "form_favourite": {
+        "accuracy": 0.5813953488372093,
+        "log_loss": 0.6832451060229866,
+        "brier": 0.24479594106299993
+      }
+    },
+    {
+      "league_key": "womens big bash league",
+      "gender": "female",
+      "n": 80,
+      "home_rate": 0.5625,
+      "v2_per_gender": {
+        "accuracy": 0.6,
+        "log_loss": 0.7071331745146001,
+        "brier": 0.2555238653576164
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5,
+        "log_loss": 0.7021749393530616,
+        "brier": 0.25448169513132307
+      },
+      "form_favourite": {
+        "accuracy": 0.625,
+        "log_loss": 0.6729386944124996,
+        "brier": 0.2398366558388494
+      }
+    },
+    {
+      "league_key": "super smash",
+      "gender": "male",
+      "n": 78,
+      "home_rate": 0.44871794871794873,
+      "v2_per_gender": {
+        "accuracy": 0.5384615384615384,
+        "log_loss": 0.7129289423047825,
+        "brier": 0.2558077290486344
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.48717948717948717,
+        "log_loss": 0.7261078975402223,
+        "brier": 0.2624878922427644
+      },
+      "form_favourite": {
+        "accuracy": 0.5512820512820513,
+        "log_loss": 0.7340972553319025,
+        "brier": 0.2681902921089015
+      }
+    },
+    {
+      "league_key": "icc under womens world cup",
+      "gender": "female",
+      "n": 69,
+      "home_rate": 0.6521739130434783,
+      "v2_per_gender": {
+        "accuracy": 0.5362318840579711,
+        "log_loss": 0.6971279150249146,
+        "brier": 0.2517779398973194
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.7101449275362319,
+        "log_loss": 0.6117795107187611,
+        "brier": 0.21046383560514012
+      },
+      "form_favourite": {
+        "accuracy": 0.7101449275362319,
+        "log_loss": 0.6201018786617041,
+        "brier": 0.21607382431233363
+      }
+    },
+    {
+      "league_key": "womens premier league",
+      "gender": "female",
+      "n": 66,
+      "home_rate": 0.5,
+      "v2_per_gender": {
+        "accuracy": 0.5454545454545454,
+        "log_loss": 0.7384158229585677,
+        "brier": 0.2702459786542556
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5151515151515151,
+        "log_loss": 0.6944591277234801,
+        "brier": 0.25064824414571224
+      },
+      "form_favourite": {
+        "accuracy": 0.5303030303030303,
+        "log_loss": 0.7289207557590776,
+        "brier": 0.2660921456612954
+      }
+    },
+    {
+      "league_key": "nepal premier league",
+      "gender": "male",
+      "n": 64,
+      "home_rate": 0.453125,
+      "v2_per_gender": {
+        "accuracy": 0.484375,
+        "log_loss": 0.7161712973588287,
+        "brier": 0.2612084179614078
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.4375,
+        "log_loss": 0.7152244750724293,
+        "brier": 0.26107980599355396
+      },
+      "form_favourite": {
+        "accuracy": 0.578125,
+        "log_loss": 0.6776357051481735,
+        "brier": 0.24223987856043333
+      }
+    },
+    {
+      "league_key": "delhi premier league",
+      "gender": "male",
+      "n": 60,
+      "home_rate": 0.5833333333333334,
+      "v2_per_gender": {
+        "accuracy": 0.6333333333333333,
+        "log_loss": 0.673089319587807,
+        "brier": 0.23995112421669523
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.6333333333333333,
+        "log_loss": 0.6709938081697169,
+        "brier": 0.2388322339605196
+      },
+      "form_favourite": {
+        "accuracy": 0.5833333333333334,
+        "log_loss": 0.6916942508112702,
+        "brier": 0.2479036337889217
+      }
+    },
+    {
+      "league_key": "madhya pradesh league",
+      "gender": "male",
+      "n": 58,
+      "home_rate": 0.5344827586206896,
+      "v2_per_gender": {
+        "accuracy": 0.5689655172413793,
+        "log_loss": 0.678450245541478,
+        "brier": 0.24277330585208953
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.6206896551724138,
+        "log_loss": 0.6726061593352546,
+        "brier": 0.2399984419053374
+      },
+      "form_favourite": {
+        "accuracy": 0.5689655172413793,
+        "log_loss": 0.669770910739651,
+        "brier": 0.23883056643067244
+      }
+    },
+    {
+      "league_key": "icc womens world cup",
+      "gender": "female",
+      "n": 55,
+      "home_rate": 0.7090909090909091,
+      "v2_per_gender": {
+        "accuracy": 0.6909090909090909,
+        "log_loss": 0.5425394319230248,
+        "brier": 0.1800394287013556
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.7272727272727273,
+        "log_loss": 0.5576250169367416,
+        "brier": 0.1871050668665682
+      },
+      "form_favourite": {
+        "accuracy": 0.7454545454545455,
+        "log_loss": 0.6072556961289277,
+        "brier": 0.20868613519449852
+      }
+    },
+    {
+      "league_key": "spring challenge",
+      "gender": "female",
+      "n": 54,
+      "home_rate": 0.5925925925925926,
+      "v2_per_gender": {
+        "accuracy": 0.46296296296296297,
+        "log_loss": 0.7035707468770347,
+        "brier": 0.2547563624560684
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.46296296296296297,
+        "log_loss": 0.7241358628400142,
+        "brier": 0.26516142158005035
+      },
+      "form_favourite": {
+        "accuracy": 0.46296296296296297,
+        "log_loss": 0.7043618569063612,
+        "brier": 0.25593593839560375
+      }
+    },
+    {
+      "league_key": "legends league cricket",
+      "gender": "male",
+      "n": 52,
+      "home_rate": 0.46153846153846156,
+      "v2_per_gender": {
+        "accuracy": 0.36538461538461536,
+        "log_loss": 0.7461933994237859,
+        "brier": 0.27481997528906077
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.4230769230769231,
+        "log_loss": 0.7519761606759108,
+        "brier": 0.2774302358921751
+      },
+      "form_favourite": {
+        "accuracy": 0.5192307692307693,
+        "log_loss": 0.7782588260820946,
+        "brier": 0.28770823082040614
+      }
+    },
+    {
+      "league_key": "national cricket league",
+      "gender": "male",
+      "n": 52,
+      "home_rate": 0.4807692307692308,
+      "v2_per_gender": {
+        "accuracy": 0.5192307692307693,
+        "log_loss": 0.6841651356856835,
+        "brier": 0.2456687792293697
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5192307692307693,
+        "log_loss": 0.6846670539242224,
+        "brier": 0.2459464892619026
+      },
+      "form_favourite": {
+        "accuracy": 0.5384615384615384,
+        "log_loss": 0.6699930488053554,
+        "brier": 0.2397419013957052
+      }
+    },
+    {
+      "league_key": "andhra premier league",
+      "gender": "male",
+      "n": 50,
+      "home_rate": 0.44,
+      "v2_per_gender": {
+        "accuracy": 0.48,
+        "log_loss": 0.7095457761470647,
+        "brier": 0.25786206611112056
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5,
+        "log_loss": 0.7134245482000953,
+        "brier": 0.2596687856167351
+      },
+      "form_favourite": {
+        "accuracy": 0.42,
+        "log_loss": 0.7187699568473837,
+        "brier": 0.2620847568681319
+      }
+    },
+    {
+      "league_key": "kerala cricket league",
+      "gender": "male",
+      "n": 50,
+      "home_rate": 0.5,
+      "v2_per_gender": {
+        "accuracy": 0.58,
+        "log_loss": 0.7016721662584129,
+        "brier": 0.2539133318160157
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.58,
+        "log_loss": 0.7024582141028567,
+        "brier": 0.2540519850178587
+      },
+      "form_favourite": {
+        "accuracy": 0.6,
+        "log_loss": 0.7203770970899436,
+        "brier": 0.2613822743279898
+      }
+    },
+    {
+      "league_key": "womens super smash",
+      "gender": "female",
+      "n": 49,
+      "home_rate": 0.5306122448979592,
+      "v2_per_gender": {
+        "accuracy": 0.5918367346938775,
+        "log_loss": 0.6590295713416499,
+        "brier": 0.2332273311267994
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.6122448979591837,
+        "log_loss": 0.6678820878240904,
+        "brier": 0.2374837859632109
+      },
+      "form_favourite": {
+        "accuracy": 0.5510204081632653,
+        "log_loss": 0.677227194354584,
+        "brier": 0.24256921858369862
+      }
+    },
+    {
+      "league_key": "icc women s world cup qualifier",
+      "gender": "female",
+      "n": 48,
+      "home_rate": 0.5416666666666666,
+      "v2_per_gender": {
+        "accuracy": 0.625,
+        "log_loss": 0.6029991354454703,
+        "brier": 0.20839289039830455
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.6458333333333334,
+        "log_loss": 0.5899185158235493,
+        "brier": 0.20110811164697928
+      },
+      "form_favourite": {
+        "accuracy": 0.6666666666666666,
+        "log_loss": 0.6303023738091181,
+        "brier": 0.2191442968159486
+      }
+    },
+    {
+      "league_key": "lanka premier league",
+      "gender": "male",
+      "n": 47,
+      "home_rate": 0.5957446808510638,
+      "v2_per_gender": {
+        "accuracy": 0.3829787234042553,
+        "log_loss": 0.7092685271618603,
+        "brier": 0.2580827904842238
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.48936170212765956,
+        "log_loss": 0.7067963422593639,
+        "brier": 0.2568869380946613
+      },
+      "form_favourite": {
+        "accuracy": 0.3404255319148936,
+        "log_loss": 0.7700620186298737,
+        "brier": 0.2871854269490994
+      }
+    },
+    {
+      "league_key": "senior women s trophy",
+      "gender": "female",
+      "n": 46,
+      "home_rate": 0.4782608695652174,
+      "v2_per_gender": {
+        "accuracy": 0.6086956521739131,
+        "log_loss": 0.6235022973840819,
+        "brier": 0.21687396772761078
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.6304347826086957,
+        "log_loss": 0.6402793518704116,
+        "brier": 0.22441091324723988
+      },
+      "form_favourite": {
+        "accuracy": 0.6304347826086957,
+        "log_loss": 0.589783785335971,
+        "brier": 0.2024972826086956
+      }
+    },
+    {
+      "league_key": "mumbai league",
+      "gender": "male",
+      "n": 40,
+      "home_rate": 0.425,
+      "v2_per_gender": {
+        "accuracy": 0.475,
+        "log_loss": 0.7336928659623584,
+        "brier": 0.2699443558552559
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.45,
+        "log_loss": 0.743407369689415,
+        "brier": 0.27459381468650557
+      },
+      "form_favourite": {
+        "accuracy": 0.425,
+        "log_loss": 0.7641420875325716,
+        "brier": 0.2832476491638322
+      }
+    },
+    {
+      "league_key": "global canada",
+      "gender": "male",
+      "n": 39,
+      "home_rate": 0.41025641025641024,
+      "v2_per_gender": {
+        "accuracy": 0.5641025641025641,
+        "log_loss": 0.7031374500628568,
+        "brier": 0.25461781238742925
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5641025641025641,
+        "log_loss": 0.7087911903809531,
+        "brier": 0.2574612144389369
+      },
+      "form_favourite": {
+        "accuracy": 0.5897435897435898,
+        "log_loss": 0.688651557576829,
+        "brier": 0.24725948783359492
+      }
+    },
+    {
+      "league_key": "acc women s premier cup",
+      "gender": "female",
+      "n": 37,
+      "home_rate": 0.7567567567567568,
+      "v2_per_gender": {
+        "accuracy": 0.8108108108108109,
+        "log_loss": 0.49807876182601385,
+        "brier": 0.15823288419889875
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.7297297297297297,
+        "log_loss": 0.5069751904165218,
+        "brier": 0.1625690071646604
+      },
+      "form_favourite": {
+        "accuracy": 0.7837837837837838,
+        "log_loss": 0.5726064109452519,
+        "brier": 0.19165405405405406
+      }
+    },
+    {
+      "league_key": "pondicherry premier league",
+      "gender": "male",
+      "n": 36,
+      "home_rate": 0.3888888888888889,
+      "v2_per_gender": {
+        "accuracy": 0.4444444444444444,
+        "log_loss": 0.6950535050802746,
+        "brier": 0.2510341778807006
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.4444444444444444,
+        "log_loss": 0.6924259674641262,
+        "brier": 0.24975956096103313
+      },
+      "form_favourite": {
+        "accuracy": 0.4444444444444444,
+        "log_loss": 0.6904492802524983,
+        "brier": 0.24784942995716797
+      }
+    },
+    {
+      "league_key": "max competition",
+      "gender": "male",
+      "n": 35,
+      "home_rate": 0.6,
+      "v2_per_gender": {
+        "accuracy": 0.7714285714285715,
+        "log_loss": 0.6130390620166841,
+        "brier": 0.21067946177599378
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.7714285714285715,
+        "log_loss": 0.6018430661083245,
+        "brier": 0.20542207542347354
+      },
+      "form_favourite": {
+        "accuracy": 0.6857142857142857,
+        "log_loss": 0.5925944757078406,
+        "brier": 0.2030428571428572
+      }
+    },
+    {
+      "league_key": "shpageeza cricket league",
+      "gender": "male",
+      "n": 35,
+      "home_rate": 0.5428571428571428,
+      "v2_per_gender": {
+        "accuracy": 0.6571428571428571,
+        "log_loss": 0.6758248426791887,
+        "brier": 0.24138716438236163
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5714285714285714,
+        "log_loss": 0.6739248349021089,
+        "brier": 0.24046309595248008
+      },
+      "form_favourite": {
+        "accuracy": 0.6571428571428571,
+        "log_loss": 0.660628869657188,
+        "brier": 0.23435822319403948
+      }
+    },
+    {
+      "league_key": "vitality blast women league",
+      "gender": "female",
+      "n": 35,
+      "home_rate": 0.45714285714285713,
+      "v2_per_gender": {
+        "accuracy": 0.5428571428571428,
+        "log_loss": 0.7370999579703273,
+        "brier": 0.2699597458260806
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.45714285714285713,
+        "log_loss": 0.7333666634919334,
+        "brier": 0.26883743107047253
+      },
+      "form_favourite": {
+        "accuracy": 0.5142857142857142,
+        "log_loss": 0.736574389298721,
+        "brier": 0.26918759839650147
+      }
+    },
+    {
+      "league_key": "top end series",
+      "gender": "male",
+      "n": 31,
+      "home_rate": 0.5806451612903226,
+      "v2_per_gender": {
+        "accuracy": 0.5161290322580645,
+        "log_loss": 0.700854034737406,
+        "brier": 0.25369615465710765
+      },
+      "v3_1_pooled": {
+        "accuracy": 0.5161290322580645,
+        "log_loss": 0.710858556745442,
+        "brier": 0.25846514197414117
+      },
+      "form_favourite": {
+        "accuracy": 0.5161290322580645,
+        "log_loss": 0.7761537201968252,
+        "brier": 0.2870274193548388
+      }
+    }
+  ],
+  "wbbl": {
+    "n_common": 80,
+    "metrics": {
+      "v2_per_gender": {
+        "n": 80,
+        "accuracy": 0.6,
+        "log_loss": 0.7071331745146001,
+        "brier": 0.2555238653576164,
+        "base_rate": 0.5625
+      },
+      "v3_1_pooled": {
+        "n": 80,
+        "accuracy": 0.5,
+        "log_loss": 0.7021749393530616,
+        "brier": 0.25448169513132307,
+        "base_rate": 0.5625
+      },
+      "form_favourite": {
+        "n": 80,
+        "accuracy": 0.625,
+        "log_loss": 0.6729386944124996,
+        "brier": 0.2398366558388494,
+        "base_rate": 0.5625
+      }
+    },
+    "by_season": {
+      "2023": {
+        "n": 1,
+        "v2_per_gender": {
+          "n": 1,
+          "accuracy": 1.0,
+          "log_loss": 0.42363823144638746,
+          "brier": 0.11925924958513573,
+          "base_rate": 1.0
+        },
+        "v3_1_pooled": {
+          "n": 1,
+          "accuracy": 1.0,
+          "log_loss": 0.5628027968069325,
+          "brier": 0.18523527455980648,
+          "base_rate": 1.0
+        },
+        "form_favourite": {
+          "n": 1,
+          "accuracy": 1.0,
+          "log_loss": 0.4780358009429998,
+          "brier": 0.1444,
+          "base_rate": 1.0
+        }
+      },
+      "2024": {
+        "n": 40,
+        "v2_per_gender": {
+          "n": 40,
+          "accuracy": 0.6,
+          "log_loss": 0.7248592926666755,
+          "brier": 0.26320877601574405,
+          "base_rate": 0.575
+        },
+        "v3_1_pooled": {
+          "n": 40,
+          "accuracy": 0.5,
+          "log_loss": 0.7086045698404296,
+          "brier": 0.25760948563702046,
+          "base_rate": 0.575
+        },
+        "form_favourite": {
+          "n": 40,
+          "accuracy": 0.575,
+          "log_loss": 0.6882127492756918,
+          "brier": 0.2472142422055211,
+          "base_rate": 0.575
+        }
+      },
+      "2025": {
+        "n": 39,
+        "v2_per_gender": {
+          "n": 39,
+          "accuracy": 0.5897435897435898,
+          "log_loss": 0.6962216416167849,
+          "brier": 0.25113587021524136,
+          "base_rate": 0.5384615384615384
+        },
+        "v3_1_pooled": {
+          "n": 39,
+          "accuracy": 0.48717948717948717,
+          "log_loss": 0.699154091226175,
+          "brier": 0.2530492541144929,
+          "base_rate": 0.5384615384615384
+        },
+        "form_favourite": {
+          "n": 39,
+          "accuracy": 0.6666666666666666,
+          "log_loss": 0.6622705072058794,
+          "brier": 0.23471699433043852,
+          "base_rate": 0.5384615384615384
+        }
+      }
+    },
+    "vs_form": {
+      "n": 80,
+      "blocks": 6,
+      "d_log_loss": 0.029236244940562178,
+      "d_log_loss_ci95": [
+        -0.013274109059120947,
+        0.04213885449879951
+      ],
+      "d_brier": 0.01464503929247378,
+      "d_brier_ci95": [
+        -0.005588541355653083,
+        0.020861363953166064
+      ]
+    },
+    "vs_v2": {
+      "n": 80,
+      "blocks": 6,
+      "d_log_loss": -0.004958235161538409,
+      "d_log_loss_ci95": [
+        -0.021777703414273868,
+        0.011529008379709722
+      ],
+      "d_brier": -0.001042170226293284,
+      "d_brier_ci95": [
+        -0.00807569039048056,
+        0.00599676155182031
+      ]
+    },
+    "calibration_5": {
+      "v2_per_gender": [
+        {
+          "bucket": "0-20%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": "20-40%",
+          "count": 3,
+          "pred_avg": 0.3707221677042312,
+          "actual_win_rate": 1.0
+        },
+        {
+          "bucket": "40-60%",
+          "count": 51,
+          "pred_avg": 0.5263015419231508,
+          "actual_win_rate": 0.5490196078431373
+        },
+        {
+          "bucket": "60-80%",
+          "count": 26,
+          "pred_avg": 0.6794880152117737,
+          "actual_win_rate": 0.5384615384615384
+        },
+        {
+          "bucket": "80-100%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        }
+      ],
+      "v3_1_pooled": [
+        {
+          "bucket": "0-20%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": "20-40%",
+          "count": 3,
+          "pred_avg": 0.3910069593716028,
+          "actual_win_rate": 1.0
+        },
+        {
+          "bucket": "40-60%",
+          "count": 69,
+          "pred_avg": 0.5127812918027075,
+          "actual_win_rate": 0.5362318840579711
+        },
+        {
+          "bucket": "60-80%",
+          "count": 8,
+          "pred_avg": 0.6526067175240234,
+          "actual_win_rate": 0.625
+        },
+        {
+          "bucket": "80-100%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        }
+      ],
+      "form_favourite": [
+        {
+          "bucket": "0-20%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": "20-40%",
+          "count": 14,
+          "pred_avg": 0.35428571428571426,
+          "actual_win_rate": 0.5
+        },
+        {
+          "bucket": "40-60%",
+          "count": 45,
+          "pred_avg": 0.4860515388417098,
+          "actual_win_rate": 0.4888888888888889
+        },
+        {
+          "bucket": "60-80%",
+          "count": 21,
+          "pred_avg": 0.6447619047619046,
+          "actual_win_rate": 0.7619047619047619
+        },
+        {
+          "bucket": "80-100%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        }
+      ]
+    },
+    "calibration_10": {
+      "v2_per_gender": [
+        {
+          "bucket": "  0- 10%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 10- 20%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 20- 30%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 30- 40%",
+          "count": 3,
+          "pred_avg": 0.3707221677042312,
+          "actual_win_rate": 1.0
+        },
+        {
+          "bucket": " 40- 50%",
+          "count": 16,
+          "pred_avg": 0.46650317802265207,
+          "actual_win_rate": 0.3125
+        },
+        {
+          "bucket": " 50- 60%",
+          "count": 35,
+          "pred_avg": 0.5536379368490931,
+          "actual_win_rate": 0.6571428571428571
+        },
+        {
+          "bucket": " 60- 70%",
+          "count": 19,
+          "pred_avg": 0.6585839946713539,
+          "actual_win_rate": 0.631578947368421
+        },
+        {
+          "bucket": " 70- 80%",
+          "count": 7,
+          "pred_avg": 0.7362274995357704,
+          "actual_win_rate": 0.2857142857142857
+        },
+        {
+          "bucket": " 80- 90%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 90-100%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        }
+      ],
+      "v3_1_pooled": [
+        {
+          "bucket": "  0- 10%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 10- 20%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 20- 30%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 30- 40%",
+          "count": 3,
+          "pred_avg": 0.3910069593716028,
+          "actual_win_rate": 1.0
+        },
+        {
+          "bucket": " 40- 50%",
+          "count": 26,
+          "pred_avg": 0.4637600628163545,
+          "actual_win_rate": 0.5384615384615384
+        },
+        {
+          "bucket": " 50- 60%",
+          "count": 43,
+          "pred_avg": 0.542422034910735,
+          "actual_win_rate": 0.5348837209302325
+        },
+        {
+          "bucket": " 60- 70%",
+          "count": 7,
+          "pred_avg": 0.6434203367879908,
+          "actual_win_rate": 0.5714285714285714
+        },
+        {
+          "bucket": " 70- 80%",
+          "count": 1,
+          "pred_avg": 0.7169113826762519,
+          "actual_win_rate": 1.0
+        },
+        {
+          "bucket": " 80- 90%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 90-100%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        }
+      ],
+      "form_favourite": [
+        {
+          "bucket": "  0- 10%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 10- 20%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 20- 30%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 30- 40%",
+          "count": 14,
+          "pred_avg": 0.35428571428571426,
+          "actual_win_rate": 0.5
+        },
+        {
+          "bucket": " 40- 50%",
+          "count": 27,
+          "pred_avg": 0.4450325619785648,
+          "actual_win_rate": 0.4074074074074074
+        },
+        {
+          "bucket": " 50- 60%",
+          "count": 18,
+          "pred_avg": 0.5475800041364273,
+          "actual_win_rate": 0.6111111111111112
+        },
+        {
+          "bucket": " 60- 70%",
+          "count": 19,
+          "pred_avg": 0.634736842105263,
+          "actual_win_rate": 0.7368421052631579
+        },
+        {
+          "bucket": " 70- 80%",
+          "count": 2,
+          "pred_avg": 0.74,
+          "actual_win_rate": 1.0
+        },
+        {
+          "bucket": " 80- 90%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        },
+        {
+          "bucket": " 90-100%",
+          "count": 0,
+          "pred_avg": NaN,
+          "actual_win_rate": NaN
+        }
+      ]
+    },
+    "all_candidate_scored": {
+      "n": 137,
+      "by_season": {
+        "2023": 58,
+        "2024": 40,
+        "2025": 39
+      },
+      "v3_1_pooled": {
+        "n": 137,
+        "accuracy": 0.5182481751824818,
+        "log_loss": 0.6993549942034017,
+        "brier": 0.2530511367995724,
+        "base_rate": 0.5474452554744526
+      },
+      "form_favourite": {
+        "n": 137,
+        "accuracy": 0.6131386861313869,
+        "log_loss": 0.6738355080970508,
+        "brier": 0.24001046558711867,
+        "base_rate": 0.5474452554744526
+      },
+      "vs_form": {
+        "n": 137,
+        "blocks": 8,
+        "d_log_loss": 0.02551948610635095,
+        "d_log_loss_ci95": [
+          -0.015705794068059685,
+          0.045290075539527415
+        ],
+        "d_brier": 0.013040671212453761,
+        "d_brier_ci95": [
+          -0.005761230740962613,
+          0.02214565209828354
+        ]
+      }
+    }
+  },
+  "bands": {
+    "all": {
+      "v2_per_gender": [
+        {
+          "band": "confident",
+          "n": 752,
+          "share": 0.14823575793416124,
+          "acc_in_band": 0.675531914893617,
+          "avg_p_max": 0.7066334791919611
+        },
+        {
+          "band": "moderate",
+          "n": 2138,
+          "share": 0.4214468756160063,
+          "acc_in_band": 0.5837231057062675,
+          "avg_p_max": 0.5924570688445585
+        },
+        {
+          "band": "close_call",
+          "n": 2183,
+          "share": 0.43031736644983243,
+          "acc_in_band": 0.5093907466788823,
+          "avg_p_max": 0.5244781903855008
+        }
+      ],
+      "v3_1_pooled": [
+        {
+          "band": "confident",
+          "n": 747,
+          "share": 0.14725014784151388,
+          "acc_in_band": 0.7028112449799196,
+          "avg_p_max": 0.7020718283959786
+        },
+        {
+          "band": "moderate",
+          "n": 2197,
+          "share": 0.433077074709245,
+          "acc_in_band": 0.5794264906690942,
+          "avg_p_max": 0.5932708969349513
+        },
+        {
+          "band": "close_call",
+          "n": 2129,
+          "share": 0.4196727774492411,
+          "acc_in_band": 0.5176139032409582,
+          "avg_p_max": 0.5234852027119299
+        }
+      ]
+    },
+    "male": {
+      "v2_per_gender": [
+        {
+          "band": "confident",
+          "n": 446,
+          "share": 0.11365953109072376,
+          "acc_in_band": 0.6614349775784754,
+          "avg_p_max": 0.7003223819747147
+        },
+        {
+          "band": "moderate",
+          "n": 1673,
+          "share": 0.4263506625891947,
+          "acc_in_band": 0.5738194859533772,
+          "avg_p_max": 0.5919348728209494
+        },
+        {
+          "band": "close_call",
+          "n": 1805,
+          "share": 0.4599898063200816,
+          "acc_in_band": 0.49806094182825483,
+          "avg_p_max": 0.5242455076473913
+        }
+      ],
+      "v3_1_pooled": [
+        {
+          "band": "confident",
+          "n": 526,
+          "share": 0.13404689092762487,
+          "acc_in_band": 0.6673003802281369,
+          "avg_p_max": 0.6993649223588089
+        },
+        {
+          "band": "moderate",
+          "n": 1668,
+          "share": 0.42507645259938837,
+          "acc_in_band": 0.5671462829736211,
+          "avg_p_max": 0.5922180209818246
+        },
+        {
+          "band": "close_call",
+          "n": 1730,
+          "share": 0.44087665647298674,
+          "acc_in_band": 0.5121387283236994,
+          "avg_p_max": 0.523286572888327
+        }
+      ]
+    },
+    "female": {
+      "v2_per_gender": [
+        {
+          "band": "confident",
+          "n": 306,
+          "share": 0.26631853785900783,
+          "acc_in_band": 0.696078431372549,
+          "avg_p_max": 0.7158320065086007
+        },
+        {
+          "band": "moderate",
+          "n": 465,
+          "share": 0.4046997389033943,
+          "acc_in_band": 0.6193548387096774,
+          "avg_p_max": 0.59433585152735
+        },
+        {
+          "band": "close_call",
+          "n": 378,
+          "share": 0.3289817232375979,
+          "acc_in_band": 0.5634920634920635,
+          "avg_p_max": 0.5255892812381133
+        }
+      ],
+      "v3_1_pooled": [
+        {
+          "band": "confident",
+          "n": 221,
+          "share": 0.19234116623150566,
+          "acc_in_band": 0.7873303167420814,
+          "avg_p_max": 0.7085145097333146
+        },
+        {
+          "band": "moderate",
+          "n": 529,
+          "share": 0.46040034812880765,
+          "acc_in_band": 0.6181474480151229,
+          "avg_p_max": 0.5965907402049232
+        },
+        {
+          "band": "close_call",
+          "n": 399,
+          "share": 0.3472584856396867,
+          "acc_in_band": 0.5413533834586466,
+          "avg_p_max": 0.5243464297666495
+        }
+      ]
+    },
+    "wbbl": {
+      "v2_per_gender": [
+        {
+          "band": "confident",
+          "n": 21,
+          "share": 0.2625,
+          "acc_in_band": 0.5238095238095238,
+          "avg_p_max": 0.6962159665885344
+        },
+        {
+          "band": "moderate",
+          "n": 29,
+          "share": 0.3625,
+          "acc_in_band": 0.5517241379310345,
+          "avg_p_max": 0.589236622292359
+        },
+        {
+          "band": "close_call",
+          "n": 30,
+          "share": 0.375,
+          "acc_in_band": 0.7,
+          "avg_p_max": 0.5253133829637205
+        }
+      ],
+      "v3_1_pooled": [
+        {
+          "band": "confident",
+          "n": 3,
+          "share": 0.0375,
+          "acc_in_band": 0.6666666666666666,
+          "avg_p_max": 0.7005607278432757
+        },
+        {
+          "band": "moderate",
+          "n": 36,
+          "share": 0.45,
+          "acc_in_band": 0.5,
+          "avg_p_max": 0.5784782587280306
+        },
+        {
+          "band": "close_call",
+          "n": 41,
+          "share": 0.5125,
+          "acc_in_band": 0.4878048780487805,
+          "avg_p_max": 0.5216419324945083
+        }
+      ]
+    }
+  },
+  "coefficients": {
+    "intercept": 0.17073274898354765,
+    "leagues_with_dummy": [
+      "andhra premier league",
+      "bangladesh premier league",
+      "big bash league",
+      "caribbean premier league",
+      "csa challenge",
+      "delhi premier league",
+      "icc men s world cup",
+      "icc under womens world cup",
+      "icc womens world cup",
+      "indian premier league",
+      "international league",
+      "kerala cricket league",
+      "legends league cricket",
+      "madhya pradesh league",
+      "maharaja trophy ksca",
+      "major league cricket",
+      "national cricket league",
+      "nepal premier league",
+      "pakistan super league",
+      "sa league",
+      "spring challenge",
+      "super smash",
+      "syed mushtaq ali trophy",
+      "tamil nadu premier league",
+      "vitality blast",
+      "vitality blast women",
+      "womens big bash league",
+      "womens premier league"
+    ],
+    "top": [
+      [
+        "home_matches_in_window_last5",
+        0.16240910575549553
+      ],
+      [
+        "away_matches_in_window_last5",
+        -0.13148646393111518
+      ],
+      [
+        "away_win_pct_tourn",
+        -0.1230318909802249
+      ],
+      [
+        "is_neutral_venue",
+        0.11840935693462667
+      ],
+      [
+        "home_win_pct_last5",
+        0.11768491518205008
+      ],
+      [
+        "away_phase_missing",
+        0.105285317622867
+      ],
+      [
+        "home_phase_missing",
+        -0.09628244157197537
+      ],
+      [
+        "gap_win_pct_tourn",
+        0.08544223335643471
+      ],
+      [
+        "home_win_pct_tourn",
+        0.07623147136051493
+      ],
+      [
+        "gap_avg_margin_last5",
+        0.0758314626378689
+      ],
+      [
+        "away_rr_middle_last5",
+        -0.07384737819940596
+      ],
+      [
+        "home_rr_middle_last5",
+        0.07205796142789724
+      ],
+      [
+        "away_win_pct_last5",
+        -0.05777156286832985
+      ],
+      [
+        "away_rr_death_last5",
+        0.05299926467844609
+      ],
+      [
+        "home_rr_death_last5",
+        -0.052980975957986474
+      ]
+    ],
+    "is_female": 0.048808942408669655,
+    "wbbl_dummy": -0.005925050103746302
+  }
+}

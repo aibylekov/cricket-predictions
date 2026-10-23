@@ -90,8 +90,9 @@ def walk_forward(df: pd.DataFrame, predictor: Predictor,
                  min_train: int = MIN_TRAIN):
     """
     Expanding-window monthly walk-forward. Returns (oof_df, info) where oof_df
-    has columns [match_id, match_date, league_key, p, y] for every evaluated
-    match, and info reports counts (evaluated / skipped / blocks).
+    has columns [match_id, match_date, league_key, p, y] (+ gender when the
+    input carries it) for every evaluated match, and info reports counts
+    (evaluated / skipped / blocks).
     """
     months = pd.period_range(df["match_date"].min(),
                              df["match_date"].max(), freq="M")
@@ -111,7 +112,10 @@ def walk_forward(df: pd.DataFrame, predictor: Predictor,
         p = np.asarray(predictor(train, cur), dtype=float)
         assert len(p) == len(cur), "predictor returned wrong length"
         blocks_used += 1
-        block = cur[["match_id", "match_date", "league_key", "y"]].copy()
+        keep = ["match_id", "match_date", "league_key", "y"]
+        if "gender" in cur.columns:              # men+women scope: keep the split key
+            keep.append("gender")
+        block = cur[keep].copy()
         block["p"] = np.clip(p, 0.0, 1.0)
         rows.append(block)
 
