@@ -58,7 +58,26 @@ GENERIC_NAMES = {"county ground", "tbc"}
 #   (Rajiv Gandhi Dehradun vs Hyderabad is confirmed as TWO grounds -> NOT here.)
 MANUAL_MERGES = {
     "a-rz--headinv6wlv9": ["c__stadium__headingley_cricket_ground__a801e"],
+    #   Junction Oval, St Kilda (women's T20s; approved 2026-10-23): three keys
+    #   for one ground, cities compatible (St Kilda / St Kilda / country-level
+    #   "Australia"). Canonical = the key carrying the ground's proper name
+    #   (9 matches; "Cricket Victoria" has 10 but is the body, not the ground).
+    "c__stadium__citipower_centre_junction_oval__d7b85": [
+        "jjunctic4rv4v", "a-rz--joskm-3qwP"],
+    #   Albert Park, Suva (women's T20s; approved 2026-10-23): "Albert Park" +
+    #   "Albert Park 2, Suva", same city, 10 matches each.
+    "a-rz--apalberty7vud5": ["a-rz--ap-nZO1"],
 }
+
+# ---- name-match pairs the editor asked to see as a CITY CONFLICT (not merged):
+#   men's "Junction Oval" key carries city=Melbourne vs St Kilda on the women's
+#   canonical key — same ground geographically, but the rule is: city conflict
+#   -> flag, never auto-merge.
+REVIEW_FLAGS = [
+    ("junction oval (men's key, city=Melbourne vs St Kilda)",
+     ["c__stadium__citipower_centre_junction_oval__d7b85",
+      "c__stadium__junction_oval__cfc6a"]),
+]
 
 # ---- confirmed duplicate tournament_ids to drop from L1 (matches + dim row).
 #   956 = "Asian Legends League, 2025": a never-started schedule snapshot whose
@@ -273,6 +292,11 @@ def fix_venues(con):
         # drop any flag that is now fully resolved to a single canonical
         flagged = [(nn, reps) for (nn, reps) in flagged
                    if not (set(reps) <= involved)]
+    # editor-requested conflict flags (keys that still exist after the merges)
+    for nname, ks in REVIEW_FLAGS:
+        ks = [id_map.get(k, k) for k in ks if k in keys]
+        if len(set(ks)) > 1:
+            flagged.append((nname, sorted(set(ks))))
 
     # ---- build new dim_venue (one row per canonical key) ----
     canonical_keys = sorted(set(id_map.values()))

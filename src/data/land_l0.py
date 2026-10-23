@@ -22,6 +22,9 @@ Credentials come from `.env`; nothing is hardcoded.
 Usage:
     python -m src.data.land_l0            # write-once (skips existing)
     python -m src.data.land_l0 --force    # overwrite existing datasets
+    python -m src.data.land_l0 --force --tables cricket__matches,cricket__teams
+        # re-land ONLY the listed tables (after an additive merge into
+        # cricket_raw); the manifest keeps the other tables' previous entries
 """
 
 from __future__ import annotations
@@ -307,20 +310,39 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="L0 landing to Parquet (read-only).")
     parser.add_argument("--force", action="store_true",
                         help="Overwrite existing L0 datasets (default: skip).")
+    parser.add_argument("--tables", default=None,
+                        help="Comma-separated subset of tables to land (default: all).")
     args = parser.parse_args()
+
+    tables = TABLES
+    if args.tables:
+        tables = [t.strip() for t in args.tables.split(",") if t.strip()]
+        unknown = [t for t in tables if t not in TABLES]
+        if unknown:
+            sys.exit(f"unknown table(s) {unknown}; known: {TABLES}")
 
     conn = get_connection()
     database = os.getenv("DB_NAME", "cricket_raw")
     print(f"L0 landing from '{database}' -> {L0_ROOT}"
-          f"{'  [--force]' if args.force else ''}\n")
+          f"{'  [--force]' if args.force else ''}"
+          f"{'  [tables: ' + ', '.join(tables) + ']' if args.tables else ''}\n")
     results: list[dict] = []
     try:
-        for table in TABLES:
+        for table in tables:
             results.append(export_table(conn, table, args.force))
     finally:
         conn.close()
 
     print_summary(results)
+    if args.tables and MANIFEST_PATH.exists():
+        # partial re-land: carry the untouched tables' previous manifest rows
+        prev = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+        done = {r["table"] for r in results}
+        carried = [{"table": t["table"], "source_rows": t["source_rows"],
+                    "parquet_rows": t["rows"], "path": t["path"],
+                    "status": t["status"], "partitioned": t["partitioned"]}
+                   for t in prev.get("tables", []) if t["table"] not in done]
+        results = sorted(results + carried, key=lambda r: TABLES.index(r["table"]))
     write_manifest(results, database)
 
     if any(r["status"] == "MISMATCH" for r in results):

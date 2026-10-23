@@ -59,6 +59,13 @@ APPROVED_ALIASES = {
     "royal challengers bangalore": "royal challengers bengaluru",  # 2024 rename
 }
 FUZZY_REVIEW_THRESHOLD = 0.85
+# Human-REJECTED odds links (never written, never re-proposed for review):
+# odds_match_id -> reason. A wrong-gender odds link is worse than a lost price.
+REJECTED_ODDS_LINKS = {
+    550: "Trinbago Knight Riders v Barbados Royals 2023-09-07: CPL men's AND "
+         "women's fixture on the same date, odds names carry no gender marker "
+         "-> genuinely ambiguous; rejected 2026-10-23",
+}
 NON_TEAM_NAMES = {"", "tbc", "tba", "tbd"}
 
 
@@ -177,6 +184,8 @@ def main():
     match_bridge = []           # (odds_match_id, internal_match_id, date, method)
     team_links = {}             # (internal_team_id, odds_feed_name) -> (norm, method)
     confident_odds_ids = set()
+    gender_disambiguated = set()   # odds rows linked only via the same-date pair
+    rejected = []                  # human-rejected odds rows (REJECTED_ODDS_LINKS)
 
     # Track, per odds row, why it failed (for tiering the rest).
     unlinked = []               # list of odds rows not confidently linked
@@ -184,23 +193,40 @@ def main():
     for oid, d, home, away in odds:
         if norm(home) in NON_TEAM_NAMES or norm(away) in NON_TEAM_NAMES:
             continue  # placeholder fixtures (TBC) — not biddable
+        if oid in REJECTED_ODDS_LINKS:
+            rejected.append((oid, d, home, away))
+            continue  # human decision: never linked, never re-proposed
         hids, hmethod = resolve(home)
         aids, amethod = resolve(away)
 
-        if len(hids) == 1 and len(aids) == 1 and d is not None:
-            want = frozenset({hids[0], aids[0]})
-            hits = [mid for (mid, pair) in matches_by_date.get(d, []) if pair == want]
+        if hids and aids and d is not None:
+            # A name may resolve to SEVERAL ids when the source reuses a club
+            # name across genders without a "Women" suffix (CPL "Barbados
+            # Royals": men id 119, women id 132). The same-date fixture whose
+            # team pair is exactly ONE (home, away) candidate pair settles it;
+            # anything else stays unlinked (never guessed).
+            cand = {}
+            for h in hids:
+                for a in aids:
+                    if h != a:
+                        cand[frozenset({h, a})] = (h, a)
+            hits = [(mid, pair) for (mid, pair) in matches_by_date.get(d, [])
+                    if pair in cand]
             if len(hits) == 1:
+                mid, pair = hits[0]
+                h_id, a_id = cand[pair]
                 if "approved_alias" in (hmethod, amethod):
                     method = "approved_alias"
                 elif hmethod == "exact" and amethod == "exact":
                     method = "exact"
                 else:
                     method = "subset"
-                match_bridge.append((oid, hits[0], str(d), method))
+                if len(hids) > 1 or len(aids) > 1:
+                    gender_disambiguated.add(oid)
+                match_bridge.append((oid, mid, str(d), method))
                 confident_odds_ids.add(oid)
-                team_links[(hids[0], home)] = (norm(home), hmethod)
-                team_links[(aids[0], away)] = (norm(away), amethod)
+                team_links[(h_id, home)] = (norm(home), hmethod)
+                team_links[(a_id, away)] = (norm(away), amethod)
                 continue
 
         unlinked.append((oid, d, home, away, hids, aids))
@@ -372,6 +398,8 @@ def main():
     sub = len([1 for *_, m in match_bridge if m == 'subset'])
     ali = len([1 for *_, m in match_bridge if m == 'approved_alias'])
     print(f"     exact / subset / approved-alias ... {ex} / {sub} / {ali}")
+    print(f"     of which name->ids ambiguous (same club name, both genders), "
+          f"settled by the same-date fixture pair ... {len(gender_disambiguated)}")
     print(f"  PRICED T20-men linked ........ {priced_linked}")
 
     print("\nKEY FINDING — the 354 priced matches are mostly NOT T20-men:")
@@ -387,9 +415,16 @@ def main():
     print(f"  priced matches with no T20-men fixture {len(outscope_priced)}")
     print(f"  distinct odds names in them ........... {len(unresolved_rows)}")
 
+    n_rej = len([1 for (oid, *_) in rejected if oid in priced])
+    print(f"\nREJECTED by human decision (never linked, never re-proposed): "
+          f"{len(rejected)} odds rows ({n_rej} priced)")
+    for oid, d, home, away in rejected:
+        print(f"  odds {oid} {d} {home} v {away}: {REJECTED_ODDS_LINKS[oid]}")
     print(f"\nPRICED reconciliation: {priced_linked} linked (Tier1) + "
-          f"{len(inscope_unlinked_priced)} review + {len(outscope_priced)} out-of-scope "
-          f"= {priced_linked + len(inscope_unlinked_priced) + len(outscope_priced)} of {n_priced}")
+          f"{len(inscope_unlinked_priced)} review + {len(outscope_priced)} "
+          f"out-of-scope + {n_rej} rejected = "
+          f"{priced_linked + len(inscope_unlinked_priced) + len(outscope_priced) + n_rej} "
+          f"of {n_priced}")
     print(f"\nOutputs in {BRIDGE_DIR}")
     print("  team_bridge.parquet, match_bridge.parquet (Tier 1 — written)")
     print("  _review_candidates.csv (Tier 2), _unresolved.csv (Tier 3)")

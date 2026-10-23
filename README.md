@@ -343,6 +343,188 @@ git push -u origin main
       чака редакторски human_decision; при връщане decision-ът става
       авторитетен (override на деривацията, bridge_entity-стил).
 
+- ✅ ИТЕРАЦИЯ 3 (56-коментарното ревю + venues резолюция):
+    · VENUES АВТОРИТЕТ: docs/Franchise_Cricket_Venues.xlsx ингестиран
+      (src/data/ingest_venue_authority.py -> data/lake/l2/venue_authority/,
+      bridge_entity-стил, 12/12 venue имена резолвнати към dim_venue).
+      Shared-venue лиги (PSL, LPL, MLC, BPL): ВСИЧКИ home-ground деривации
+      отхвърлени; никаква home-advantage проза; изброените венюта = само
+      fixture контекст. Sheet1 с празни human_decision -> high-confidence
+      gate остава (IPL/BBL/CPL стоят като derived). Leakage suite добави
+      venue_authority консистентност: 144 shared-league реда с "изстреляла"
+      деривация -> всичките override-нати, 0 home-ground претенции.
+    · STAGE LABELS: няма отделно поле в източника; stage живее в
+      dim_match.sub_title (Final/Qualifier 1-2/Eliminator/Semi Final/
+      Quarter Final/Play-off/Knockout/Challenger/Super 8|Six|Four ->
+      group). Парсва се в payload: match_context.stage/stage_label/
+      is_knockout + stage на всеки last5_results запис. Knockout мачове:
+      промптът задължава "как стигнаха дотук" (кой qualifier/eliminator,
+      опонент, марж, venue); точковата таблица = минорен контекст.
+    · EVENT+FORMAT LABELS: всеки last5_results запис носи event, format,
+      venue. Промпт: никакво смесване на win counts през различни събития
+      без етикет; series/tour претенции = само tour-scoped числа (C5
+      фиксът); key points и preview се съгласуват по scope.
+    · FORMAT НАВСЯКЪДЕ: механична проверка - form-claim изречение без
+      T20 токен = violation.
+    · PLAYER PHASE SPLITS: нов L2 dataset player_phase (ball-by-ball,
+      batter_id/bowler_id = roster keys 1:1; point-in-time, max_source_
+      date одит + ball-level recount в leakage теста). Батъри: runs/SR
+      по powerplay/middle/death; боулъри: overs разпределение + phase
+      economy. В players блока по избраната window; мълчаливо пропуснат
+      без ball покритие (~55% от мачовете имат).
+    · ПРОМПТ/СТИЛ (механично проверени): fact-repetition cap (стат факт
+      максимум 2 пъти, никога verbatim: dup-sentence + 3x-stat check);
+      нула мета-prediction изречения (стат-базиран verdict с конкретни
+      числа + ясен победител по band); банове prolific/notable/marginal
+      + ", the 32nd match of" апозитиви; toss сценарии при еднакъв избор
+      -> едно изречение ("whoever wins the toss..."); задължителен
+      conditional angle при moderate/close_call ("if X misfire, tilts to
+      Y", механично проверен); липсващи данни НИКОГА не се споменават
+      (мълчание, не обяснение; regex guard).
+    · Leakage: 10/10 проверки PASS. 6-те демо drafts: numbers PASS +
+      style PASS (retry loop работи; 1 draft мина на втора генерация).
+
+- ✅ ИТЕРАЦИЯ 4 (38-коментарното v3 ревю — SCOPE & ATTRIBUTION: всяка
+    претенция е механично вързана към истинския ѝ обхват):
+    · SCOPE-ATTRIBUTION VALIDATOR (C10 root-cause): изречение със scope
+      фраза ("this series / the current tour / this event") + win/loss
+      брой трябва да ползва tour-scoped числата (current_event /
+      standings / last5 записите от текущото събитие); обратното също —
+      cross-competition брой без "across competitions" или име на друго
+      събитие = violation. Плюс WIN-PAIR проверка: всяко "won/lost N of
+      M" се валидира като ДВОЙКА срещу конкретен payload прозорец
+      ("won 3 of their last 5" при 4 победи гърми, макар 3 и 5 да
+      съществуват поотделно в payload-а).
+    · TOSS IMPACT AS DATA (C12 root-cause): детерминистично поле
+      conditions.toss_impact (прагове, документирани в payload.py:
+      gap=|batfirst−chase|; high при gap≥0.20 или dew∧gap≥0.10;
+      moderate при dew или gap≥0.10; иначе low). Toss секцията изразява
+      ТОЧНО това ниво; "significant/decisive" механично позволени само
+      при high; жаргонът ("toss impact", "rated low") е house-banned.
+    · LEAGUE vs FORMAT: match.competition_type (от dim_team.is_national)
+      + form_label ("IPL"/"MLC" акроним или име на лигата); франчайз
+      мачове етикетират форма с лигата, никога излишно "T20";
+      интернационалните пазят T20; venue претенции винаги "T20s"
+      (пробата е крос-лигова).
+    · VENUE SAMPLE SCOPE: venue_stats.sample_format/first/last (point-
+      in-time; нов leakage тест payload_venue_sample — 11/11 PASS);
+      Pitch секцията казва пробата ("across the 17 T20s here since June
+      2025"); venue win claims дават count И total ("won 10 of the 17",
+      C36).
+    · REPETITION (затегнато): отличителен стат максимум веднъж в Three
+      Key Points + веднъж другаде, никога в 3+ секции (по секции,
+      механично).
+    · FINALS FRAMING: stage=final → verdict само в title-winning език
+      (title/trophy/champions задължителни в затварящата секция), без
+      "next stage / advance / qualify for"; при всеки knockout всяко
+      "N points" носи "in the group stage" в същото изречение.
+    · PRE_TOSS плътност = post_toss (само toss съдържанието се мени);
+      банове impeccable/erratic; препратки към други събития се датират
+      ("in the World Cup in June 2026" — last5 записите носят date);
+      conditional angle може да добави batting-depth клауза.
+    · 6-те демо drafts: numbers PASS + style PASS; retry loop-ът върши
+      работа (всеки draft мина след 1–2 поправки; 3 drafts регенерирани
+      след затягането на win-pair/жаргон проверките).
+      Bundle: docs/demo_drafts_review_v4.md.
+
+- 🟨 ИТЕРАЦИЯ 5 (AUTHOR STYLE ROTATION — един къщен глас → 8 ротиращи
+    авторски гласа срещу повторяемостта между статиите; чака редакторски
+    преглед на demo drafts преди commit):
+    · ПРОФИЛИ: docs/author-styles/author-01..08-*.md (изчистени реални
+      статии по автор) → src/content/calibrate_author.py (Style
+      Calibration анализ, ruleset Part 4 — същият като за къщния профил)
+      → src/content/author_profiles/author-NN.md (version-controlled).
+      Профилът е САМО глас: ритъм, дължина на изреченията, отварящи/
+      затварящи конструкции, регистър, похвати, десет проверими правила.
+      Механично измерени входове (разпределение на дължините, дял на
+      кратки/дълги изречения, размер на абзаците, класове на отварянията,
+      контракции, въпроси) — моделът пише профила върху тези цифри, не
+      на око. LEAK CHECK (механичен): нито един отбор/играч/двусловно
+      собствено име/статистика от източника не влиза в профила (един
+      repair round; иначе файлът се маркира FAILED и скриптът гърми).
+      Секция 7 „Conflicts with house rules": механично преброените
+      навици на автора, които къщните правила override-ват (em dashes,
+      banned words, hedges, липса на контракции, XI/weather блокове).
+    · LAYERING RULE (критично): профилът е СЛОЙ ВЪРХУ къщните правила,
+      никога замяна. prompt_template.build_system_prompt(author_id) пълни
+      единствения VOICE слот на system prompt-а (къщен глас при None);
+      всичко останало — FACTS wall, STRUCTURE, sentence mechanics, всички
+      banned списъци, self-check — е байт-идентично при всеки автор
+      (тест). Всички механични проверки в generate_article.py са
+      author-independent (validate_* не приемат автор). Конфликт между
+      авторски навик и механично правило → правилото печели.
+    · РОТАЦИЯ (no-repeat shuffle): src/content/author_rotation.py —
+      разбъркано тесте от 8-те профила, по един на мач в реда на
+      генериране за деня, преразбъркване САМО при изчерпване (+ boundary
+      guard: първата карта на новото тесте ≠ последната раздадена).
+      Мачове от един ден никога не споделят стил, освен ако са >8.
+      PERSISTENCE: data/state/author_assignments.json (gitignored state,
+      като track record) пази автора по match_id → retry-ове и двойката
+      pre_toss/post_toss на един мач винаги получават същия профил.
+      Draft header-ът щампова author=author-NN.
+    · Тестове: tests/test_author_rotation.py (профили пълни + leak-free,
+      layering байт-идентичност, тесте без повторение през 40 seed-а,
+      persistence през инстанции/режими, generator wiring с fake client).
+      Demo: python -m src.content.generate_article [--modes both]
+      [--reset-authors] — трите demo мача като ЕДИН мачов ден.
+    · Калибрацията минава през 2 LLM repair round-а + ДЕТЕРМИНИСТИЧНИ
+      last-resort стъпки (gpt-4o заменя banned дума с друга banned дума и
+      пише „no contractions" като правило въпреки инструкцията): scrub на
+      описателния banned речник в секции 1–6 (синоними, никога секция 7),
+      drop на anti-house правила от TEN RULES в секция 7, strip на
+      примери с измислени цифри. Резултат: 8/8 профила LEAK CHECK PASSED.
+    · DEMO (един мачов ден, fresh deck, post_toss): 8731 England v India →
+      author-08 (Shoaib Z.); 8250 Washington v MI New York → author-04
+      (Vishnu Reddy); 8032 RCB v Gujarat → author-07 (Manish K.). Три
+      различни профила; останали в тестето 5.
+    · Bundle: docs/demo_drafts_review_v5.md (drafts + reports + трите
+      използвани профила) чрез src/content/export_review_bundle.py 5.
+
+- ✅ SCOPE WIDENING: T20 МЪЖЕ + ЖЕНИ (цел: WBBL 2026) + SPRING CHALLENGE 2026
+    INGEST (23.10.2026; leakage 11/11 PASS; merge + entity-watch репортите
+    прегледани и решенията приложени — виж docs/ingest/):
+    · INGEST WORKFLOW: per-table SQL дъмпове от сайта (phpMyAdmin, CREATE/ALTER/
+      INSERT под alias имена m/bat/p...) НИКОГА не се source-ват директно в
+      cricket_raw. src/data/merge_staging_dump.py: инспекция (DROP/TRUNCATE =
+      abort) -> staging db cricket_sc -> id-overlap репорт (identical / changed
+      / new) -> вмъкване само на нови редове; changed редове не се презаписват
+      (L0 immutable). land_l0 --force --tables <списък> пре-ланда само
+      засегнатите таблици. Spring Challenge 2026 (tournament 1906, 21 мача):
+      1,732 нови реда, 0 конфликти; cricket__tournaments ред за 1906 ЛИПСВА
+      (league_key NULL за 2026 до доставка на дъмпа).
+    · L1 SCOPE: format='t20' AND gender IN ('male','female') (build_l1
+      --genders). gender е колона в dim_match -> L2 -> L3 -> payload
+      (match.gender, sample_format "T20 men"/"T20 women"). venue_stats е
+      gender-scoped (venue_key, gender, as_of_date): мъжките venue числа са
+      непроменени. Payload тренира само same-gender. validation.load_completed има
+      default gender='male' -> training/backtest данните НЕ се променят до
+      следващата задача (retrain мъже+жени, league-aware, WBBL отделно).
+    · DEDUPE ФИКС (разкрит от женския scope): източникът ползва едно и
+      също име за мъжки и женски клуб без "Women" (CPL Barbados Royals/TKR/
+      Guyana, Northern Brave, ACT). Колапсът е exact name В РАМКИТЕ на
+      gender-а на мачовете; dim_team.team_gender; entity_watch 1d = механична
+      охрана (17 remaps, 0 cross-gender). bridge_entity решава двусмислени
+      имена през same-date fixture pair (144 линка); CPL double-header
+      (odds 550) падна в review вместо тих линк.
+    · ENTITY WATCH: src/data/entity_watch.py (bridge-style, преди commit):
+      186 нови отбора, 68 нови venue, 117 нови турнира; WBBL 2023/24/25 =
+      един league_key, Spring Challenge 2024/25 = един. РЕШЕНИЯ (23.10.2026):
+      ACT 353 "Australian Capital Territory" (2024) -> 738 "ACT Meteors Women"
+      (2025/26) = одобрен cross-season alias (build_l1 APPROVED_TEAM_ALIASES,
+      механична проверка за еднакъв gender, evidence в L1 manifest); Junction
+      Oval x3 и Albert Park Suva x2 = MANUAL_MERGES в revise_l1 (мъжкият
+      "Junction Oval" ключ, city=Melbourne, остава flag-нат); odds 550 (CPL
+      double-header) = REJECTED_ODDS_LINKS в build_bridge (никога линк, никога
+      review). Пълен репорт: docs/ingest/scope_widening_report.md.
+    · Данни: мъже 4,748 мача (4,601 completed) / жени 1,424 (1,406); WBBL
+      59/43/43 мача по сезон; женски ball-by-ball 408/1,424 (phase фичъри
+      NULL там); SC 2026: 16/21 мача с player scores (10078-10081 + 10084 без).
+
+🟨 СЛЕДВА (заключено, 23.10.2026): (1) cricket__tournaments дъмп ->
+data/raw/spring_challenge_2026/, merge през staging, rebuild L1 за league_key
+на SC 2026 (НЕ се измисля league_key дотогава); (2) retrain мъже+жени,
+league-aware, WBBL точност отделно.
+
 🟨 Следва (по избор): (а) Level 1 фундаментален слой (Roanuz lineup
 endpoint + availability фичъри) — атакува IPL директно; (б) нелинеен
 модел (GBM) на същите фичъри; (в) Фаза 3.4 — human review + publish +

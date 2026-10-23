@@ -62,12 +62,19 @@ Predictor = Callable[[pd.DataFrame, pd.DataFrame], np.ndarray]
 # --------------------------------------------------------------------------
 # data
 # --------------------------------------------------------------------------
-def load_completed() -> pd.DataFrame:
-    """Completed T20-men matches with a defined home/away target, date-sorted."""
+def load_completed(gender: str | None = "male") -> pd.DataFrame:
+    """Completed T20 matches with a defined home/away target, date-sorted.
+
+    gender: "male" (DEFAULT — L3 now also holds women's T20s, but the Phase-2
+    training set stays men-only until the men+women, league-aware retrain;
+    the default keeps every training/backtest script's data unchanged),
+    "female", or None for all genders (the content payload filters per match).
+    """
     con = duckdb.connect()
+    gender_clause = f"AND gender = '{gender}'" if gender else ""
     df = con.execute(f"""
         SELECT * FROM read_parquet('{L3}')
-        WHERE winner IN ('home','away')
+        WHERE winner IN ('home','away') {gender_clause}
         ORDER BY match_date, match_id
     """).df()
     con.close()

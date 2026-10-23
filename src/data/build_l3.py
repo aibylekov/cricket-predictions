@@ -1,7 +1,7 @@
 """
 build_l3.py — L3 flat feature-row assembler (ASSEMBLY ONLY).
 
-One row per T20-men match (completed + upcoming). Joins the existing L2
+One row per in-scope T20 match (men + women; `gender` column; completed + upcoming). Joins the existing L2
 datasets into the single flat table the model reads. NO new aggregate
 computation. Reads L2 (+ L1 dims for home/away resolution). NEVER modifies
 L0/L1/L2. Writes to data/lake/l3/.
@@ -96,6 +96,7 @@ def build(con: duckdb.DuckDBPyConnection):
             CAST(m.start_at AS DATE)        AS match_date,
             CAST(m.start_at AS DATE)        AS as_of_date,
             t.league_key,
+            m.gender,
             CAST(m.tournament_id AS BIGINT) AS tournament_id,
             m.venue_key,
             m.is_completed,
@@ -137,7 +138,7 @@ def build(con: duckdb.DuckDBPyConnection):
         FROM resolved
     )
     SELECT
-        h.match_id, h.match_date, h.as_of_date, h.league_key, h.tournament_id,
+        h.match_id, h.match_date, h.as_of_date, h.league_key, h.gender, h.tournament_id,
         h.venue_key, cond.day_night, h.is_completed,
         h.is_neutral_venue, h.home_team_source,
         h.home_team_id, h.away_team_id,
@@ -162,7 +163,8 @@ def build(con: duckdb.DuckDBPyConnection):
     LEFT JOIN tf_wide home ON home.match_id=h.match_id AND home.team_id=h.home_team_id
     LEFT JOIN tf_wide away ON away.match_id=h.match_id AND away.team_id=h.away_team_id
     LEFT JOIN read_parquet('{L2_VENUE}') vs
-           ON vs.venue_key=h.venue_key AND CAST(vs.as_of_date AS DATE)=h.as_of_date
+           ON vs.venue_key=h.venue_key AND vs.gender=h.gender
+          AND CAST(vs.as_of_date AS DATE)=h.as_of_date
     LEFT JOIN read_parquet('{L2_COND}') cond
            ON CAST(cond.match_id AS BIGINT)=h.match_id
     LEFT JOIN read_parquet('{L2_ODDS}') od
@@ -187,11 +189,11 @@ def main():
 
     manifest = {
         "layer": "L3",
-        "purpose": "flat feature row (one per T20-men match) — the only table the model reads",
+        "purpose": "flat feature row (one per in-scope T20 match; gender column splits men/women) — the only table the model reads",
         "assembly_only": True,
         "source": "data/lake/l2 (+ L1 dims for home/away resolution, read-only)",
         "build_timestamp": datetime.now().isoformat(timespec="seconds"),
-        "grain": "one row per T20-men match (completed + upcoming)",
+        "grain": "one row per in-scope T20 match (men + women; completed + upcoming)",
         "rows": int(len(df)),
         "home_away_logic": {
             "default": "home=team_a, away=team_b (feed order)",

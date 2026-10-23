@@ -18,5 +18,11 @@ pymysql>=1.1
 # Content generation
 openai>=3.0
 
+# Editorial ingest (docs/Franchise_Cricket_Venues.xlsx)
+openpyxl>=3.1
+
 # CLI / utilities
 tqdm>=4.66
+
+# Tests
+pytest>=8.0

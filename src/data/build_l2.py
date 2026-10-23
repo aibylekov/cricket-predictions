@@ -10,7 +10,7 @@ match here means one with a recorded outcome (winner in {'a','b'}); this also
 cleanly excludes the handful of future-dated rows that are flagged
 is_completed=True but have no winner yet.
 
-SNAPSHOT GRAIN: for EVERY T20-men match M (played or not-yet-played), with
+SNAPSHOT GRAIN: for EVERY in-scope T20 match M (men + women; dim_match.gender) (played or not-yet-played), with
 D = date(M.start_at), we emit a pre-match snapshot for each of the two
 participating teams, as_of_date = D. Future matches are valid targets; their
 snapshot simply uses only past completed data.
@@ -22,7 +22,7 @@ Datasets produced:
                      layer: "this season/tour so far"; L3 ignores it)
   2) venue_stats     grain (venue_key, as_of_date)
   3) match_conditions grain (match_id)
-  4) match_odds_devig grain (match_id)  — bridge-linked priced T20-men only
+  4) match_odds_devig grain (match_id)  — bridge-linked priced in-scope T20 only
   5) player_form     grain (match_id, team_id, player_key, window)
                      [iteration 2, content layer] windows: last5 (the TEAM's
                      last 5 completed matches) | current_event.
@@ -118,6 +118,7 @@ def connect() -> duckdb.DuckDBPyConnection:
             CAST(m.match_id   AS BIGINT) AS match_id,
             CAST(m.tournament_id AS BIGINT) AS tournament_id,
             t.league_key,
+            m.gender,                    -- male | female (scope widened for WBBL)
             CAST(m.team_a_id  AS BIGINT) AS team_a_id,
             CAST(m.team_b_id  AS BIGINT) AS team_b_id,
             m.start_at,
@@ -139,6 +140,8 @@ def connect() -> duckdb.DuckDBPyConnection:
             over_number,
             ball_type,
             runs,
+            batter_id,                     -- comment-parsed roster keys
+            bowler_id,                     -- (iteration 3: player_phase)
             ts_primary
         FROM read_parquet('{L1_FACT}')
         WHERE inning_key IN ('a_1','b_1');  -- main innings only (drop super-overs)
@@ -237,7 +240,7 @@ def build_team_match_history(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def build_targets(con: duckdb.DuckDBPyConnection) -> None:
-    """Every T20-men match (played or not) x its two teams = snapshot targets."""
+    """Every in-scope T20 match (played or not) x its two teams = snapshot targets."""
     con.execute("""
         CREATE TEMP TABLE targets AS
         SELECT match_id, team_a_id AS team_id, match_date AS as_of_date,
@@ -358,25 +361,33 @@ def build_team_form(con: duckdb.DuckDBPyConnection):
 # 2) venue_stats
 # --------------------------------------------------------------------------
 def build_venue_stats(con: duckdb.DuckDBPyConnection):
+    """Venue split per (venue_key, GENDER, as_of_date).
+
+    GENDER-SCOPED: men's and women's T20s share grounds (WBBL plays at the
+    BBL venues) but have different scoring levels, so the venue sample behind
+    a match is same-gender only. Men's venue numbers are therefore unchanged
+    by the scope widening; women's matches get their own venue history.
+    """
     # completed matches at a venue, with first-innings score + win-type
     con.execute("""
         CREATE TEMP TABLE venue_history AS
-        SELECT d.match_id, d.venue_key, d.match_date, d.result_type,
+        SELECT d.match_id, d.venue_key, d.gender, d.match_date, d.result_type,
                fi.first_innings_runs
         FROM dim_match d
         LEFT JOIN first_innings fi ON fi.match_id = d.match_id
         WHERE d.winner IS NOT NULL AND d.venue_key IS NOT NULL;
     """)
-    # snapshot targets: every distinct (venue_key, as_of_date) on the schedule
+    # snapshot targets: every distinct (venue_key, gender, as_of_date) on the schedule
     con.execute("""
         CREATE TEMP TABLE venue_targets AS
-        SELECT DISTINCT venue_key, match_date AS as_of_date
+        SELECT DISTINCT venue_key, gender, match_date AS as_of_date
         FROM dim_match
         WHERE venue_key IS NOT NULL;
     """)
     return con.execute("""
         SELECT
             t.venue_key,
+            t.gender,
             t.as_of_date,
             COUNT(h.match_id)                                   AS matches_at_venue,
             AVG(h.first_innings_runs)                           AS avg_first_innings_score,
@@ -390,9 +401,10 @@ def build_venue_stats(con: duckdb.DuckDBPyConnection):
         FROM venue_targets t
         LEFT JOIN venue_history h
                ON h.venue_key = t.venue_key
+              AND h.gender = t.gender                          -- same-gender sample
               AND h.match_date < t.as_of_date                  -- STRICTLY before
-        GROUP BY t.venue_key, t.as_of_date
-        ORDER BY t.venue_key, t.as_of_date;
+        GROUP BY t.venue_key, t.gender, t.as_of_date
+        ORDER BY t.venue_key, t.gender, t.as_of_date;
     """).df()
 
 
@@ -401,7 +413,7 @@ def build_venue_stats(con: duckdb.DuckDBPyConnection):
 # --------------------------------------------------------------------------
 def build_match_conditions(con: duckdb.DuckDBPyConnection):
     """
-    Per T20-men match: toss + day/night + dew flag.
+    Per in-scope T20 match: toss + day/night + dew flag.
 
     - toss_winner / toss_decision: parsed from L0 cricket__matches.toss JSON
       ({"winner":"a|b","elected":"bat|bowl"}). NULL for not-yet-played matches
@@ -603,6 +615,146 @@ def build_player_form(con: duckdb.DuckDBPyConnection):
 
 
 # --------------------------------------------------------------------------
+# 5b) player_phase  (iteration 3, content layer)
+# --------------------------------------------------------------------------
+def build_player_phase(con: duckdb.DuckDBPyConnection):
+    """
+    Point-in-time per-player PHASE splits, per (target match, team, window),
+    from L1 ball-by-ball (fact.batter_id / bowler_id — the comment-parsed
+    ids, which match the roster `key` 1:1 on the covered matches).
+
+    Batting (the player's own deliveries faced):
+        balls faced = deliveries excluding wides; runs = the `runs` column
+        (off-the-bat; extras rows carry runs=0 in this source, no_ball rows
+        include the single penalty — an accepted approximation).
+    Bowling (deliveries the player bowled):
+        legal balls = excluding wides/no-balls (same convention as the
+        team-level phase econ); runs = the `runs` column.
+
+    COVERAGE: only ~55% of completed matches carry ball data, so a window's
+    phase split may rest on FEWER matches than the player_form window it
+    accompanies (phase_matches counts them). Rows exist only where at least
+    one covered delivery exists; the content layer omits the block silently
+    otherwise (NULL-safe by absence). Windows mirror player_form: last5
+    (the TEAM's last 5 completed matches) | current_event. max_source_date
+    audit column as usual.
+    """
+    # per (match, team, player, phase) tallies, batting and bowling
+    con.execute("""
+        CREATE TEMP TABLE player_ball_phase AS
+        WITH tagged AS (
+            SELECT f.match_id, f.side, f.ball_type, f.runs,
+                   f.batter_id, f.bowler_id,
+                   CASE
+                       WHEN f.over_number BETWEEN 1  AND 6  THEN 'pp'
+                       WHEN f.over_number BETWEEN 7  AND 15 THEN 'mid'
+                       ELSE 'death'
+                   END AS phase,
+                   d.team_a_id, d.team_b_id
+            FROM fact f
+            JOIN dim_match d ON d.match_id = f.match_id
+            WHERE f.batter_id IS NOT NULL OR f.bowler_id IS NOT NULL
+        ),
+        bat AS (
+            SELECT match_id,
+                   CASE side WHEN 'a' THEN team_a_id ELSE team_b_id END AS team_id,
+                   batter_id AS player_key, phase,
+                   SUM(CASE WHEN ball_type != 'wide' THEN 1 ELSE 0 END) AS bat_balls,
+                   SUM(runs) AS bat_runs
+            FROM tagged WHERE batter_id IS NOT NULL
+            GROUP BY 1, 2, 3, 4
+        ),
+        bowl AS (
+            SELECT match_id,
+                   CASE side WHEN 'a' THEN team_b_id ELSE team_a_id END AS team_id,
+                   bowler_id AS player_key, phase,
+                   SUM(CASE WHEN ball_type NOT IN ('wide','no_ball')
+                            THEN 1 ELSE 0 END) AS bowl_balls,
+                   SUM(runs) AS bowl_runs
+            FROM tagged WHERE bowler_id IS NOT NULL
+            GROUP BY 1, 2, 3, 4
+        )
+        SELECT COALESCE(b.match_id, w.match_id)     AS match_id,
+               COALESCE(b.team_id, w.team_id)       AS team_id,
+               COALESCE(b.player_key, w.player_key) AS player_key,
+               COALESCE(b.phase, w.phase)           AS phase,
+               b.bat_balls, b.bat_runs, w.bowl_balls, w.bowl_runs
+        FROM bat b
+        FULL OUTER JOIN bowl w
+          ON w.match_id = b.match_id AND w.team_id = b.team_id
+         AND w.player_key = b.player_key AND w.phase = b.phase;
+    """)
+
+    _phase_aggs = """
+            COUNT(DISTINCT s.match_id)                              AS phase_matches,
+            SUM(CASE WHEN s.phase='pp'    THEN s.bat_runs  END)     AS bat_pp_runs,
+            SUM(CASE WHEN s.phase='pp'    THEN s.bat_balls END)     AS bat_pp_balls,
+            SUM(CASE WHEN s.phase='mid'   THEN s.bat_runs  END)     AS bat_mid_runs,
+            SUM(CASE WHEN s.phase='mid'   THEN s.bat_balls END)     AS bat_mid_balls,
+            SUM(CASE WHEN s.phase='death' THEN s.bat_runs  END)     AS bat_death_runs,
+            SUM(CASE WHEN s.phase='death' THEN s.bat_balls END)     AS bat_death_balls,
+            SUM(CASE WHEN s.phase='pp'    THEN s.bowl_runs  END)    AS bowl_pp_runs,
+            SUM(CASE WHEN s.phase='pp'    THEN s.bowl_balls END)    AS bowl_pp_balls,
+            SUM(CASE WHEN s.phase='mid'   THEN s.bowl_runs  END)    AS bowl_mid_runs,
+            SUM(CASE WHEN s.phase='mid'   THEN s.bowl_balls END)    AS bowl_mid_balls,
+            SUM(CASE WHEN s.phase='death' THEN s.bowl_runs  END)    AS bowl_death_runs,
+            SUM(CASE WHEN s.phase='death' THEN s.bowl_balls END)    AS bowl_death_balls
+    """
+
+    # window='last5': the TEAM's last 5 completed matches strictly before D
+    con.execute(f"""
+        CREATE TEMP TABLE pp_last5 AS
+        WITH ranked AS (
+            SELECT t.match_id AS tgt_match_id, t.team_id AS tgt_team_id,
+                   t.as_of_date,
+                   h.match_id AS hist_match_id, h.match_date AS hist_date,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY t.match_id, t.team_id
+                       ORDER BY h.match_date DESC, h.match_id DESC
+                   ) AS rn
+            FROM targets t
+            JOIN team_match_history h
+              ON h.team_id = t.team_id
+             AND h.match_date < t.as_of_date               -- STRICTLY before
+        )
+        SELECT r.tgt_match_id AS match_id, r.tgt_team_id AS team_id,
+               r.as_of_date, s.player_key,
+               'last5' AS "window",
+               {_phase_aggs},
+               MAX(r.hist_date) AS max_source_date
+        FROM ranked r
+        JOIN player_ball_phase s
+          ON s.match_id = r.hist_match_id AND s.team_id = r.tgt_team_id
+        WHERE r.rn <= 5
+        GROUP BY r.tgt_match_id, r.tgt_team_id, r.as_of_date, s.player_key;
+    """)
+
+    # window='current_event': same tournament_id, strictly before D
+    con.execute(f"""
+        CREATE TEMP TABLE pp_event AS
+        SELECT t.match_id, t.team_id, t.as_of_date, s.player_key,
+               'current_event' AS "window",
+               {_phase_aggs},
+               MAX(h.match_date) AS max_source_date
+        FROM targets t
+        JOIN team_match_history h
+          ON h.team_id = t.team_id
+         AND h.tournament_id = t.tournament_id
+         AND h.match_date < t.as_of_date                   -- STRICTLY before
+        JOIN player_ball_phase s
+          ON s.match_id = h.match_id AND s.team_id = t.team_id
+        GROUP BY t.match_id, t.team_id, t.as_of_date, s.player_key;
+    """)
+
+    return con.execute("""
+        SELECT * FROM pp_last5
+        UNION ALL
+        SELECT * FROM pp_event
+        ORDER BY match_id, team_id, "window", player_key;
+    """).df()
+
+
+# --------------------------------------------------------------------------
 # 6) standings  (iteration 2, content layer)
 # --------------------------------------------------------------------------
 def build_standings(con: duckdb.DuckDBPyConnection):
@@ -739,6 +891,8 @@ def main() -> None:
     match_odds_devig = build_match_odds_devig(con)
     print("Building player_form ...")
     player_form = build_player_form(con)
+    print("Building player_phase ...")
+    player_phase = build_player_phase(con)
     print("Building standings ...")
     standings = build_standings(con)
     print("Building home_ground ...")
@@ -750,6 +904,7 @@ def main() -> None:
         "match_conditions": match_conditions,
         "match_odds_devig": match_odds_devig,
         "player_form": player_form,
+        "player_phase": player_phase,
         "standings": standings,
         "home_ground": home_ground,
     }
@@ -777,7 +932,13 @@ def main() -> None:
                                   "phase rates are NULL where the window has no ball data.",
             "dew_flag": "HEURISTIC (night session -> 1). No explicit dew field in source.",
             "day_night": "HEURISTIC from local start hour (>=15:00 -> day_night).",
-            "odds": "mean vendor decimal price per match; bridge-linked priced T20-men only.",
+            "odds": "mean vendor decimal price per match; bridge-linked priced in-scope T20 only.",
+            "gender_scope": "L1 scope = T20 men + women (dim_match.gender). "
+                            "venue_stats is keyed by (venue_key, gender, as_of_date): "
+                            "same-gender venue sample only, so men's venue numbers "
+                            "are unchanged by the widening. team/player/standings/"
+                            "home_ground aggregates are keyed by team/player/"
+                            "tournament ids, which are gender-specific already.",
             "tournament_window": "team_form 'tournament' window groups by league_key "
                                  "(year-stripped), so IPL's 4 season ids form one "
                                  "coherent league group; league_key also carried as a column.",
@@ -802,9 +963,25 @@ def main() -> None:
                            f">= {HOME_GROUND_MIN_MATCHES} prior same-league "
                            f"matches there AND >= {HOME_GROUND_MIN_SHARE:.0%} "
                            "of prior league matches; content layer.",
-            "max_source_date": "audit column on player_form/standings/"
-                               "home_ground rows; leakage test asserts it "
-                               "< as_of_date.",
+            "player_phase": "iteration 3, content layer: per-player phase "
+                            "splits from ball-by-ball (batter_id/bowler_id "
+                            "= roster keys). Only ball-covered matches "
+                            "contribute (phase_matches may be < the "
+                            "player_form window count); rows exist only "
+                            "where covered deliveries exist (NULL-safe by "
+                            "absence). bat runs = off-the-bat `runs` col; "
+                            "bowl legal balls exclude wides/no-balls (same "
+                            "convention as team phase econ).",
+            "venue_authority": "editorial authority from docs/"
+                               "Franchise_Cricket_Venues.xlsx via "
+                               "src/data/ingest_venue_authority.py "
+                               "(separate build; static config, no "
+                               "as_of_date). Shared-venue leagues reject "
+                               "ALL home-ground derivations at the "
+                               "content layer.",
+            "max_source_date": "audit column on player_form/player_phase/"
+                               "standings/home_ground rows; leakage test "
+                               "asserts it < as_of_date.",
         },
         "row_counts": {name: int(len(df)) for name, df in datasets.items()},
     }

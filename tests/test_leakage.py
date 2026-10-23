@@ -34,6 +34,9 @@ DIM_TOURNAMENT = (L1 / "dim_tournament" / "dim_tournament.parquet").as_posix()
 TEAM_FORM = (L2 / "team_form" / "team_form.parquet").as_posix()
 VENUE_STATS = (L2 / "venue_stats" / "venue_stats.parquet").as_posix()
 PLAYER_FORM = (L2 / "player_form" / "player_form.parquet").as_posix()
+PLAYER_PHASE = (L2 / "player_phase" / "player_phase.parquet").as_posix()
+L1_FACT = (L1 / "fact_ball_by_ball" / "fact_ball_by_ball.parquet").as_posix()
+VENUE_AUTHORITY = L2 / "venue_authority"
 STANDINGS = (L2 / "standings" / "standings.parquet").as_posix()
 HOME_GROUND = (L2 / "home_ground" / "home_ground.parquet").as_posix()
 L0 = ROOT / "data" / "lake" / "l0"
@@ -57,6 +60,7 @@ def _con() -> duckdb.DuckDBPyConnection:
                CAST(m.team_b_id AS BIGINT)  AS team_b_id,
                CAST(m.tournament_id AS BIGINT) AS tournament_id,
                t.league_key,
+               m.gender,
                m.winner,
                CAST(m.start_at AS DATE)     AS match_date
         FROM read_parquet('{DIM_MATCH}') m
@@ -153,8 +157,10 @@ def _check_team_form_window(con, window, derive_fn):
 
 
 def _check_venue_stats(con):
+    # venue_stats is gender-scoped (venue_key, gender, as_of_date): the
+    # independent recount must use the same-gender population only.
     rows = con.execute(f"""
-        SELECT venue_key, CAST(as_of_date AS DATE), matches_at_venue
+        SELECT venue_key, gender, CAST(as_of_date AS DATE), matches_at_venue
         FROM (
             SELECT * FROM read_parquet('{VENUE_STATS}') WHERE matches_at_venue > 0
         )
@@ -162,14 +168,14 @@ def _check_venue_stats(con):
     """).fetchall()
     assert rows, "no venue_stats rows sampled"
     leaks, miscounts = [], []
-    for venue_key, as_of, stored_n in rows:
+    for venue_key, gender, as_of, stored_n in rows:
         contrib = con.execute("""
             SELECT CAST(match_id AS BIGINT), CAST(start_at AS DATE)
             FROM read_parquet($p)
-            WHERE winner IS NOT NULL AND venue_key = $v
+            WHERE winner IS NOT NULL AND venue_key = $v AND gender = $g
               AND CAST(start_at AS DATE) < $d
         """.replace("$p", f"'{DIM_MATCH}'"),
-            {"v": venue_key, "d": as_of}).fetchall()
+            {"v": venue_key, "g": gender, "d": as_of}).fetchall()
         for cm_id, cm_date in contrib:
             if not (cm_date < as_of):
                 leaks.append((venue_key, as_of, cm_id, cm_date))
@@ -302,6 +308,196 @@ def _check_player_form(con):
                     for w, m, t, p, a, r, s in miscounts[:20]))
     print(f"[player_form] full-scan max_source_date audit + {len(rows)} sampled "
           f"recounts — 0 leaks, all recounts matched.")
+
+
+def _check_player_phase(con):
+    """
+    Iteration-3 aggregate (per-player phase splits from ball-by-ball).
+    (FULL SCAN) max_source_date audit column strictly < as_of_date.
+    (SAMPLE) independent recount: re-derive the team's window matches from
+    L1 decided, then recount the player's powerplay balls faced (excluding
+    wides) and legal balls bowled (excluding wides/no-balls) straight from
+    the L1 ball fact, and compare to the stored bat_pp_balls/bowl_pp_balls.
+    """
+    bad = con.execute(f"""
+        SELECT COUNT(*) FROM read_parquet('{PLAYER_PHASE}')
+        WHERE max_source_date >= as_of_date
+    """).fetchone()[0]
+    assert bad == 0, f"LEAKAGE in player_phase: {bad} rows with max_source_date >= as_of_date"
+
+    rows = con.execute(f"""
+        SELECT match_id, team_id, CAST(as_of_date AS DATE), player_key,
+               "window", bat_pp_balls, bowl_pp_balls
+        FROM read_parquet('{PLAYER_PHASE}')
+        USING SAMPLE reservoir({SAMPLE_N} ROWS) REPEATABLE (42)
+    """).fetchall()
+    assert rows, "no player_phase rows sampled"
+
+    tid_by_match = dict(con.execute(
+        "SELECT match_id, tournament_id FROM decided "
+        "UNION SELECT CAST(match_id AS BIGINT), CAST(tournament_id AS BIGINT) "
+        f"FROM read_parquet('{DIM_MATCH}')").fetchall())
+
+    leaks, miscounts = [], []
+    for mid, team_id, as_of, pkey, window, stored_bat_pp, stored_bowl_pp in rows:
+        if window == "last5":
+            wm = _independent_last5(con, team_id, as_of)
+        else:
+            wm = _independent_current_event(con, team_id, tid_by_match[mid], as_of)
+        for cm_id, cm_date in wm:
+            if not (cm_date < as_of):
+                leaks.append((window, mid, team_id, pkey, as_of, cm_id, cm_date))
+        if wm:
+            # team-scoped: a player can appear for the OPPONENT inside the
+            # window (franchise moves) — only deliveries attributed to the
+            # target team count (batting side = team; bowling side = the
+            # other team), matching the L2 grain (match, team, player).
+            ids = ",".join(str(int(w[0])) for w in wm)
+            rec = con.execute(f"""
+                SELECT
+                    SUM(CASE WHEN f.batter_id = ? AND f.ball_type != 'wide'
+                             AND f.over_number BETWEEN 1 AND 6
+                             AND (CASE f.batting_team WHEN 'a' THEN d.team_a_id
+                                  ELSE d.team_b_id END) = ?
+                             THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN f.bowler_id = ?
+                             AND f.ball_type NOT IN ('wide','no_ball')
+                             AND f.over_number BETWEEN 1 AND 6
+                             AND (CASE f.batting_team WHEN 'a' THEN d.team_b_id
+                                  ELSE d.team_a_id END) = ?
+                             THEN 1 ELSE 0 END)
+                FROM read_parquet('{L1_FACT}') f
+                JOIN decided d ON d.match_id = CAST(f.match_id AS BIGINT)
+                WHERE CAST(f.match_id AS BIGINT) IN ({ids})
+                  AND f.inning_key IN ('a_1','b_1')
+            """, [pkey, team_id, pkey, team_id]).fetchone()
+            r_bat, r_bowl = int(rec[0] or 0), int(rec[1] or 0)
+        else:
+            r_bat, r_bowl = 0, 0
+        if r_bat != int(stored_bat_pp or 0) or r_bowl != int(stored_bowl_pp or 0):
+            miscounts.append((window, mid, team_id, pkey, as_of,
+                              (r_bat, r_bowl),
+                              (stored_bat_pp, stored_bowl_pp)))
+
+    assert not leaks, (
+        "LEAKAGE in player_phase: window match dated >= as_of_date:\n"
+        + "\n".join(f"  {w} match={m} team={t} player={p} as_of={a} used={u} dated={d}"
+                    for w, m, t, p, a, u, d in leaks[:20]))
+    assert not miscounts, (
+        "COUNT MISMATCH in player_phase (recount != stored pp balls):\n"
+        + "\n".join(f"  {w} match={m} team={t} player={p} as_of={a} recount={r} stored={s}"
+                    for w, m, t, p, a, r, s in miscounts[:20]))
+    print(f"[player_phase] full-scan max_source_date audit + {len(rows)} sampled "
+          f"ball-level recounts — 0 leaks, all recounts matched.")
+
+
+def _check_venue_authority(con):
+    """
+    Iteration-3 consistency check for the editorial venue authority (static
+    config — no as_of_date to leak, but the POLICY must be enforced): for
+    every shared-venue league, the content layer must never surface an
+    at_own_ground claim, even where the L2 derivation fired. Verified
+    against the payload assembler's own venue_ownership output for every
+    shared-league match whose derived is_home_ground is true.
+    """
+    policy_path = (VENUE_AUTHORITY / "league_policy.parquet").as_posix()
+    shared = [r[0] for r in con.execute(f"""
+        SELECT league_key FROM read_parquet('{policy_path}')
+        WHERE policy = 'shared_venues'
+    """).fetchall()]
+    assert shared, "no shared_venues leagues in venue_authority (ingest not run?)"
+
+    # matches in shared leagues where the DERIVATION would have claimed a
+    # home ground — exactly the rows the authority must override
+    fired = con.execute(f"""
+        SELECT hg.match_id, hg.team_id, d.league_key
+        FROM read_parquet('{HOME_GROUND}') hg
+        JOIN (SELECT CAST(m.match_id AS BIGINT) AS match_id, t.league_key
+              FROM read_parquet('{DIM_MATCH}') m
+              LEFT JOIN read_parquet('{DIM_TOURNAMENT}') t
+                     ON CAST(t.tournament_id AS BIGINT) = CAST(m.tournament_id AS BIGINT)
+             ) d ON d.match_id = hg.match_id
+        WHERE hg.is_home_ground AND d.league_key IN ({",".join("?" * len(shared))})
+    """, shared).fetchall()
+
+    import sys
+    if str(ROOT) not in sys.path:        # direct-script run has no ROOT
+        sys.path.insert(0, str(ROOT))
+    from src.content.payload import _tables, _venue_ownership
+    t = _tables()
+    l3 = t["l3"]
+    bad = []
+    checked = 0
+    for mid, team_id, lk in fired:
+        hit = l3[l3["match_id"] == mid]
+        if hit.empty:            # not an L3 target (no payload will exist)
+            continue
+        row = hit.iloc[0]
+        vo = _venue_ownership(t, int(mid), row["league_key"],
+                              int(row["home_team_id"]), int(row["away_team_id"]))
+        checked += 1
+        if vo.get("policy") != "shared_venues":
+            bad.append((mid, lk, "policy=" + str(vo.get("policy"))))
+        for side in ("home_team", "away_team"):
+            s = vo.get(side)
+            if s and s.get("at_own_ground"):
+                bad.append((mid, lk, f"{side}.at_own_ground=true"))
+
+    assert not bad, (
+        "VENUE AUTHORITY VIOLATION (shared-league match surfaced a home-"
+        "ground claim):\n"
+        + "\n".join(f"  match={m} league={lk}: {why}" for m, lk, why in bad[:20]))
+    print(f"[venue_authority] {len(shared)} shared-venue leagues; "
+          f"{len(fired)} derivation-fired rows, {checked} with payloads — "
+          f"every one overridden to policy=shared_venues, 0 home-ground claims.")
+
+
+def _check_payload_venue_sample(con):
+    """
+    Iteration-4 payload field: venue_stats.sample_first_match /
+    sample_last_match (the date range behind the venue split). Verified
+    against the payload assembler's own helper for sampled venue_stats
+    snapshots: the range must lie STRICTLY before as_of_date and its
+    population count must equal the stored matches_at_venue.
+    """
+    import sys
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from src.content.payload import _tables, _venue_sample_range
+    import pandas as pd
+
+    rows = con.execute(f"""
+        SELECT venue_key, gender, CAST(as_of_date AS DATE), matches_at_venue
+        FROM read_parquet('{VENUE_STATS}')
+        WHERE matches_at_venue > 0
+        USING SAMPLE reservoir({SAMPLE_N} ROWS) REPEATABLE (42)
+    """).fetchall()
+    assert rows, "no venue_stats rows sampled"
+
+    t = _tables()
+    dm = t["dim_match"]
+    bad = []
+    for venue_key, gender, as_of, stored_n in rows:
+        as_of = pd.Timestamp(as_of)
+        first, last = _venue_sample_range(t, venue_key, as_of, gender)
+        n = int(((dm["venue_key"] == venue_key) & (dm["gender"] == gender)
+                 & dm["winner"].notna() & (dm["match_date"] < as_of)).sum())
+        if first is None or last is None:
+            bad.append((venue_key, as_of.date(), "range is null", stored_n))
+        elif pd.Timestamp(last) >= as_of:
+            bad.append((venue_key, as_of.date(),
+                        f"LEAK: last={last} >= as_of", stored_n))
+        elif n != int(stored_n):
+            bad.append((venue_key, as_of.date(),
+                        f"count mismatch: range population {n}", stored_n))
+
+    assert not bad, (
+        "PAYLOAD VENUE SAMPLE violation (range not strictly-before, or its "
+        "population != venue_stats.matches_at_venue):\n"
+        + "\n".join(f"  venue={v} as_of={a}: {why} (stored {s})"
+                    for v, a, why, s in bad[:20]))
+    print(f"[payload_venue_sample] {len(rows)} sampled venue snapshots — "
+          f"range strictly before as_of, population == matches_at_venue.")
 
 
 def _check_standings(con):
@@ -439,6 +635,24 @@ def test_player_form_no_leakage():
     con.close()
 
 
+def test_player_phase_no_leakage():
+    con = _con()
+    _check_player_phase(con)
+    con.close()
+
+
+def test_venue_authority_enforced():
+    con = _con()
+    _check_venue_authority(con)
+    con.close()
+
+
+def test_payload_venue_sample_no_leakage():
+    con = _con()
+    _check_payload_venue_sample(con)
+    con.close()
+
+
 def test_standings_no_leakage():
     con = _con()
     _check_standings(con)
@@ -459,9 +673,12 @@ if __name__ == "__main__":
     _check_team_form_window(con, "tournament", _independent_tournament)
     _check_team_form_window(con, "current_event", _independent_current_event)
     _check_venue_stats(con)
+    _check_payload_venue_sample(con)
     _check_player_form(con)
+    _check_player_phase(con)
     _check_standings(con)
     _check_home_ground(con)
+    _check_venue_authority(con)
     _check_l3(con)
     con.close()
     print("\nLEAKAGE TEST: PASS — no snapshot (L2 or L3) uses data dated >= its as_of_date.")
