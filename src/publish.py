@@ -10,6 +10,9 @@ metadata that exist only for editorial review:
                          NOTE: Written in author style: author-07 (Manish K.)
                          | rotation deck position 3/8
 
+A draft whose header says FAILED VALIDATION is refused outright, before
+anything is stripped (it never ships, whatever its body looks like).
+
 The publish path removes both MECHANICALLY (prepare_for_publish) and then
 runs a guard (publish_guard_violations) over the text that would be sent:
 any surviving trace - the footer marker, an author-NN id, "rotation deck",
@@ -71,9 +74,26 @@ def publish_guard_violations(text: str) -> list[str]:
     return out
 
 
+def failed_validation_reason(draft_text: str) -> str | None:
+    """The FAILED VALIDATION stamp from the draft header, if the header has
+    one (None = no failed stamp). Only the leading header comment(s) count:
+    that is where generate_and_save records the validation verdict."""
+    m = _HEADER_RE.match(draft_text)
+    if not m:
+        return None
+    hit = re.search(r"FAILED\s+VALIDATION[^|>]*(?:\|[^>]*)?", m.group(0),
+                    re.IGNORECASE)
+    return hit.group(0).strip().rstrip("-").strip() if hit else None
+
+
 def prepare_for_publish(draft_text: str) -> str:
-    """Strip draft-only metadata, then guard the result. Raises
-    PublishGuardError if anything survives the strip."""
+    """Refuse a draft that failed validation, strip draft-only metadata,
+    then guard the result. Raises PublishGuardError on either."""
+    failed = failed_validation_reason(draft_text)
+    if failed:
+        raise PublishGuardError(
+            "refusing to publish - the draft FAILED VALIDATION (fix and "
+            f"regenerate it first): {failed[:400]}")
     clean = strip_draft_metadata(draft_text)
     bad = publish_guard_violations(clean)
     if bad:

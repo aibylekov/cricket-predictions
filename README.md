@@ -488,6 +488,8 @@ git push -u origin main
         header-а + footer-а механично, после guard върху финалния текст
         (author-NN, "written in author style", "rotation deck", validation
         stamp, "<!--") -> PublishGuardError; publish() праща само чист текст.
+        Draft с header "FAILED VALIDATION" се отказва изцяло, преди strip-а
+        (failed_validation_reason; нищо не стига до poster-а).
       - ROTATION AUDIT: python -m src.content.author_rotation audit [--json]
         -> история (seq, match_id, day, author, deck position), per-deck
         cycle check (всяко тесте раздава всички 8 преди повторение; без
@@ -501,6 +503,8 @@ git push -u origin main
       - HOME SCOPE (механично): "at home"/"home record"/"home form"... +
         win/loss брой = само home-scoped числа (last5 мачове на ТОЗИ
         терен за отбор с at_own_ground); сезонен 10/16 -> "season record".
+      - docs/voice samples/ и docs/author-styles/ са в .gitignore (voice
+        samples untracked; 8-те author-styles файла остават tracked).
       - TERMINOLOGY GLOSSARY (prompt_template.TERMINOLOGY, механично):
         'strike rate', никога 'striking rate'.
       - Регресия: трите v5 drafts гърмят точно на трите посочени места и

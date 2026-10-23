@@ -125,6 +125,18 @@ def test_publish_guard_refuses_any_surviving_metadata(leak):
         pub.prepare_for_publish(text)
 
 
+def test_publish_refuses_a_failed_validation_draft():
+    failed = DRAFT.replace(
+        "VALIDATION: PASSED",
+        "FAILED VALIDATION - numbers: ok | style: words=['pivotal (x1)']", 1)
+    assert pub.failed_validation_reason(failed).startswith("FAILED VALIDATION")
+    assert pub.failed_validation_reason(DRAFT) is None
+    sent = []
+    with pytest.raises(pub.PublishGuardError, match="FAILED VALIDATION"):
+        pub.publish("8250", failed, poster=lambda *a: sent.append(a))
+    assert sent == []                              # nothing reached the poster
+
+
 def test_publish_posts_only_clean_text():
     sent = {}
     pub.publish("8032", DRAFT, poster=lambda mid, t: sent.update(mid=mid, t=t))
