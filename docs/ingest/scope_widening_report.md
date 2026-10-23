@@ -150,9 +150,44 @@ phase features: 539 of 1,424. Score tables cover 1,248 women's matches.
 4. Training data unchanged: `validation.load_completed(gender="male")` is the default
    (4,036 completed men's matches, as before); the payload calls it with gender=None and
    filters per match. The men+women retrain is the next task.
-5. Tournament row 1906: still missing; league_key stays NULL for SC 2026 until the
-   cricket__tournaments dump is merged the same staged way (no invented league_key).
+5. Tournament row 1906: still missing from the source, and no dump is coming. See the
+   addendum below: it is now a documented manual seed in L1.
 
 ## Follow-ups flagged (not changed)
 
 - `check_consistency_and_coverage.py` still describes the men-only scope.
+
+## Addendum (2026-10-23): tournament 1906 seeded manually
+
+The editor confirmed that no `cricket__tournaments` export for id 1906 is coming.
+`build_l1.MANUAL_TOURNAMENT_SEEDS` now seeds the single missing `dim_tournament` row:
+
+| column | value |
+|---|---|
+| tournament_id | 1906 |
+| tournament_name | T20 Spring Challenge 2026 |
+| gender | female |
+| start_date | 2026-10-12 (end 2026-10-21 and format t20 recorded in the manifest) |
+| tournament_key, short_name, slug, metric_group | NULL (not confirmed, not invented) |
+| league_key | `spring challenge`, derived from the name by `revise_l1.base_league` |
+
+The source is recorded as `editor-confirmed` in the L1 manifest under
+`dim_tournament_manual_seeds`. `t20_scope.tournament_ids_missing_after_seeds` is now empty.
+The build checks the seed against the 21 in-scope matches. Their format (t20), gender
+(female) and dates (2026-10-12..2026-10-21) all agree, and any mismatch would abort the
+build. If the source table ever gains id 1906, the source row wins and the seed is
+reported as superseded.
+
+Effect after the rebuild (L1 -> revise_l1 -> bridge -> venue authority -> L2 -> L3; 68/68
+tests pass):
+
+- All 21 SC 2026 L3 rows now carry `league_key = spring challenge`, joining 776 (2024)
+  and 1325 (2025).
+- SC 2026 `team_form` tournament window: 42 team rows draw on 5-13 prior Spring Challenge
+  matches each (mean 9.3). With the NULL key they drew on none.
+- Men's data unchanged: 4,748 L3 rows, 28,383 team_form rows, 3,695 venue snapshots.
+
+**Player scores for 10078-10081 and 10084:** not available. The files in
+`data/raw/spring_challenge_2026/` are byte-identical to the 22 Oct export in
+`Downloads.zip`, which is the export already merged. L0 still has 0 batting, bowling and
+fielding rows for those five matches, so coverage stays at 16 of 21.

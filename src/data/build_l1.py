@@ -65,11 +65,78 @@ APPROVED_TEAM_ALIAS_EVIDENCE: dict[int, str] = {
 }
 
 
+# Documented MANUAL SEEDS for dim_tournament: tournament ids that in-scope
+# matches reference but the source cricket__tournaments table lacks (no export
+# of the row is coming). Only editor-confirmed facts are seeded; source
+# columns nobody confirmed (key, short_name, slug, metric_group) stay NULL -
+# nothing is invented. league_key is derived from the name by revise_l1 as
+# for every other row. Mechanically checked at build time: the id must be
+# referenced by in-scope matches, every such match must carry the seeded
+# format + gender and start inside [start_date, end_date]; otherwise the build
+# aborts. If the source table ever gains the id, the SOURCE row wins and the
+# seed is reported as superseded. Recorded in the L1 manifest.
+MANUAL_TOURNAMENT_SEEDS: list[dict] = [
+    {"tournament_id": 1906,
+     "tournament_name": "T20 Spring Challenge 2026",
+     "format": "t20",
+     "gender": "female",
+     "start_date": "2026-10-12",
+     "end_date": "2026-10-21",
+     "source": "editor-confirmed",
+     "confirmed": "2026-10-23",
+     "note": "no cricket__tournaments export for this id is coming (editor, "
+             "2026-10-23); the 2024/2025 editions are ids 776 and 1325."},
+]
+
+
 def l0(name: str, partitioned: bool = False) -> str:
     """Return a DuckDB read_parquet() expression for an L0 dataset."""
     path = (L0_ROOT / name).as_posix()
     hp = ", hive_partitioning=true" if partitioned else ""
     return f"read_parquet('{path}/**/*.parquet'{hp})"
+
+
+def register_tournament_seeds(con: duckdb.DuckDBPyConnection) -> list[dict]:
+    """Register MANUAL_TOURNAMENT_SEEDS as the `tournament_seed` table and
+    check each seed against the in-scope matches (abort on any mismatch).
+    Needs create_views() first (m20, l0_tournaments). Returns manifest records."""
+    rows = [(int(sd["tournament_id"]), sd["tournament_name"], sd["format"],
+             sd["gender"], sd["start_date"], sd["end_date"])
+            for sd in MANUAL_TOURNAMENT_SEEDS]
+    con.execute("CREATE TABLE tournament_seed (tournament_id BIGINT, "
+                "tournament_name VARCHAR, format VARCHAR, gender VARCHAR, "
+                "start_date DATE, end_date DATE)")
+    if rows:
+        con.executemany("INSERT INTO tournament_seed VALUES (?, ?, ?, ?, ?, ?)", rows)
+    records = []
+    for sd in MANUAL_TOURNAMENT_SEEDS:
+        tid = int(sd["tournament_id"])
+        in_source = con.execute("SELECT COUNT(*) FROM l0_tournaments WHERE id = ?",
+                                [tid]).fetchone()[0] > 0
+        n, fmts, gens, first_d, last_d = con.execute(
+            "SELECT COUNT(*), string_agg(DISTINCT format, '/'), "
+            "string_agg(DISTINCT gender, '/'), MIN(CAST(start_at AS DATE)), "
+            "MAX(CAST(start_at AS DATE)) FROM m20 WHERE tournament_id = ?",
+            [tid]).fetchone()
+        problems = []
+        if n == 0:
+            problems.append("no in-scope match references it")
+        else:
+            if fmts != sd["format"]:
+                problems.append(f"match format {fmts} != seeded {sd['format']}")
+            if gens != sd["gender"]:
+                problems.append(f"match gender {gens} != seeded {sd['gender']}")
+            if str(first_d) < sd["start_date"] or str(last_d) > sd["end_date"]:
+                problems.append(f"matches span {first_d}..{last_d}, outside "
+                                f"seeded {sd['start_date']}..{sd['end_date']}")
+        if problems and not in_source:
+            raise SystemExit(f"MANUAL_TOURNAMENT_SEEDS {tid}: " + "; ".join(problems))
+        records.append({**sd, "matches": int(n),
+                        "match_dates": f"{first_d}..{last_d}" if n else None,
+                        "status": "superseded_by_source" if in_source else "seeded",
+                        "null_columns": ["tournament_key", "short_name", "slug",
+                                         "metric_group"]})
+    return records
 
 
 def create_views(con: duckdb.DuckDBPyConnection,
@@ -262,6 +329,19 @@ def dataset_sql() -> dict[str, str]:
                 tr.metric_group
             FROM l0_tournaments tr
             WHERE tr.id IN (SELECT DISTINCT tournament_id FROM m20)
+            UNION ALL
+            -- documented manual seeds (MANUAL_TOURNAMENT_SEEDS), only for ids
+            -- the source lacks; unconfirmed source columns stay NULL
+            SELECT
+                CAST(sd.tournament_id AS UBIGINT),
+                CAST(NULL AS VARCHAR), sd.tournament_name,
+                CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
+                sd.gender,
+                CAST(sd.start_date AS TIMESTAMP),
+                CAST(NULL AS VARCHAR)
+            FROM tournament_seed sd
+            WHERE sd.tournament_id NOT IN (SELECT id FROM l0_tournaments)
+              AND sd.tournament_id IN (SELECT DISTINCT tournament_id FROM m20)
         """,
         # --- dim_venue (parsed from cricket__matches.venue JSON) -----------
         "dim_venue": """
@@ -358,6 +438,7 @@ def main() -> None:
 
     con = duckdb.connect()
     create_views(con, genders)
+    seed_records = register_tournament_seeds(con)
 
     # --- Scope metrics --------------------------------------------------- #
     t20m_total = con.execute("SELECT COUNT(*) FROM m20").fetchone()[0]
@@ -384,11 +465,17 @@ def main() -> None:
           f"(completed={completed}, not_completed/other={not_completed})")
     for g, n, c in by_gender:
         print(f"  {g}: {n} matches, {c} completed")
-    if missing_tourn:
-        print(f"  WARNING: {len(missing_tourn)} tournament_id(s) referenced by in-scope "
-              f"matches are MISSING from cricket__tournaments -> no dim_tournament row, "
-              f"league_key NULL: "
-              + ", ".join(f"{tid} ({n} matches)" for tid, n in missing_tourn))
+    seeded_ids = {r["tournament_id"] for r in seed_records if r["status"] == "seeded"}
+    still_missing = [(t, n) for t, n in missing_tourn if int(t) not in seeded_ids]
+    for r in seed_records:
+        print(f"  MANUAL SEED dim_tournament {r['tournament_id']} "
+              f"'{r['tournament_name']}' ({r['gender']}, {r['start_date']}..{r['end_date']}, "
+              f"{r['matches']} matches): {r['status']} [source: {r['source']}]")
+    if still_missing:
+        print(f"  WARNING: {len(still_missing)} tournament_id(s) referenced by in-scope "
+              f"matches are MISSING from cricket__tournaments and not seeded -> no "
+              f"dim_tournament row, league_key NULL: "
+              + ", ".join(f"{tid} ({n} matches)" for tid, n in still_missing))
     print("  is_completed derivation: (status == 'completed').")
     print("  status breakdown: " + ", ".join(f"{s}={c}" for s, c in status_rows))
 
@@ -498,7 +585,16 @@ def main() -> None:
                       "status_breakdown": {s: c for s, c in status_rows},
                       "tournament_ids_missing_from_source": [
                           {"tournament_id": int(tid), "matches": int(n)}
-                          for tid, n in missing_tourn]},
+                          for tid, n in missing_tourn],
+                      "tournament_ids_missing_after_seeds": [
+                          {"tournament_id": int(tid), "matches": int(n)}
+                          for tid, n in still_missing]},
+        "dim_tournament_manual_seeds": {
+            "method": "documented manual seed for an id the source table lacks; "
+                      "only confirmed facts seeded, other source columns NULL; "
+                      "league_key derived from the name by revise_l1; source row "
+                      "wins if it ever appears",
+            "seeds": seed_records},
         "dim_team_dedupe": {"scoped_team_ids": n_scoped,
                             "canonical_teams": n_canon,
                             "duplicate_ids_remapped": n_remapped,

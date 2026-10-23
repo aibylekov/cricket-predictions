@@ -527,8 +527,15 @@ git push -u origin main
       / new) -> вмъкване само на нови редове; changed редове не се презаписват
       (L0 immutable). land_l0 --force --tables <списък> пре-ланда само
       засегнатите таблици. Spring Challenge 2026 (tournament 1906, 21 мача):
-      1,732 нови реда, 0 конфликти; cricket__tournaments ред за 1906 ЛИПСВА
-      (league_key NULL за 2026 до доставка на дъмпа).
+      1,732 нови реда, 0 конфликти. cricket__tournaments ред за 1906 няма в
+      източника и дъмп няма да дойде -> документиран MANUAL SEED в L1
+      (build_l1 MANUAL_TOURNAMENT_SEEDS, source: editor-confirmed, 23.10.2026):
+      "T20 Spring Challenge 2026", t20, female, 2026-10-12..2026-10-21;
+      key/short_name/slug/metric_group = NULL (не се измислят); league_key се
+      извежда от името -> "spring challenge" (= 776 + 1325). Build-ът
+      проверява формат/gender/дати срещу мачовете и спира при разминаване;
+      ако източникът някога даде реда, той печели (seed = superseded).
+      Запис в L1 manifest: dim_tournament_manual_seeds.
     · L1 SCOPE: format='t20' AND gender IN ('male','female') (build_l1
       --genders). gender е колона в dim_match -> L2 -> L3 -> payload
       (match.gender, sample_format "T20 men"/"T20 women"). venue_stats е
@@ -555,12 +562,14 @@ git push -u origin main
       review). Пълен репорт: docs/ingest/scope_widening_report.md.
     · Данни: мъже 4,748 мача (4,601 completed) / жени 1,424 (1,406); WBBL
       59/43/43 мача по сезон; женски ball-by-ball 408/1,424 (phase фичъри
-      NULL там); SC 2026: 16/21 мача с player scores (10078-10081 + 10084 без).
+      NULL там); SC 2026: 16/21 мача с player scores (10078-10081 + 10084 без;
+      папката няма нов експорт - дъмповете са байт-идентични с 22.10 zip-а).
+      SC 2026 tournament-window форма: 5-13 предишни SC мача на отбор (беше 0
+      при NULL league_key); мъжките L2/L3 непроменени.
 
-🟨 СЛЕДВА (заключено, 23.10.2026): (1) cricket__tournaments дъмп ->
-data/raw/spring_challenge_2026/, merge през staging, rebuild L1 за league_key
-на SC 2026 (НЕ се измисля league_key дотогава); (2) retrain мъже+жени,
-league-aware, WBBL точност отделно.
+🟨 СЛЕДВА (заключено, 23.10.2026): retrain мъже+жени, league-aware, WBBL
+точност отделно. (SC 2026 league_key: решено с manual seed; player scores за
+10078-10081/10084 - само ако сайтът даде нов експорт.)
 
 🟨 Следва (по избор): (а) Level 1 фундаментален слой (Roanuz lineup
 endpoint + availability фичъри) — атакува IPL директно; (б) нелинеен
