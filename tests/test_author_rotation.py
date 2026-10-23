@@ -80,8 +80,9 @@ def test_profile_leak_check_against_source(author_id):
     is still asserted above."""
     src = next(SOURCE_DIR.glob(f"{author_id}-*.md"), None)
     if src is None:
-        pytest.skip(f"source articles for {author_id} not present in "
-                    f"{SOURCE_DIR} (local-only, gitignored)")
+        pytest.skip(f"source articles not present: docs/author-styles/"
+                    f"{author_id}-*.md (local-only, gitignored; the "
+                    f"profile's own LEAK CHECK stamp is still asserted)")
     text = load_profile(author_id)
     inv = entity_inventory(read_source(src)[1])
     for kind in ("teams", "players"):
