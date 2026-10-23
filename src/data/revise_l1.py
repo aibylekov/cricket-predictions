@@ -79,6 +79,66 @@ REVIEW_FLAGS = [
       "c__stadium__junction_oval__cfc6a"]),
 ]
 
+# ---- human-approved LEAGUE_KEY ALIASES (bridge_entity style): the same league
+# under two spellings of its name across editions, which the year/format strip
+# in base_league() cannot unify (apostrophe artifacts "women s" vs "womens",
+# word order). member_key -> canonical_key, applied after base_league().
+# Canonical = the apostrophe-free spelling, because payload._league_label
+# builds labels from the key's initials and a stray "s" token breaks them
+# ("women s caribbean premier league" -> "WSCPL"); for a word-order rename,
+# the current edition's name. Mechanically checked at build time: every id
+# under the merged key must carry ONE gender (abort otherwise), and an alias
+# may not chain. Found by the 2026-10-23 league_key audit (men AND women;
+# bilateral "X tour of Y" keys excluded - the host side differs). Approved
+# 2026-10-23 (user: "consolidate the fragmented league_keys").
+LEAGUE_KEY_ALIASES: dict[str, str] = {
+    "women s vitality blast": "vitality blast women",
+    "women s caribbean premier league": "womens caribbean premier league",
+    "icc men s world cup warm up matches": "icc mens world cup warm up matches",
+    "icc women s under world cup": "icc under womens world cup",
+}
+LEAGUE_KEY_ALIAS_EVIDENCE: dict[str, str] = {
+    "women s vitality blast":
+        "1093 'Women's Vitality Blast T20, 2025' (59 mt) = 1579 'Vitality Blast "
+        "Women 2026' (57 mt): England women's tier 1; all 9 teams of 2025 play in "
+        "2026 (+ Yorkshire Women). NOT 1582 'Vitality Blast Women League 2, 2026': "
+        "0 shared teams (lower tier, own key 'vitality blast women league').",
+    "women s caribbean premier league":
+        "675/1220 'Women's Caribbean Premier League, 2024/2025' (7+7 mt) = 227 "
+        "'Womens Caribbean Premier League 2023' (21 mt): same 3 franchises.",
+    "icc men s world cup warm up matches":
+        "1447 'ICC Men's T20 World Cup Warm-up Matches, 2026' (16 mt) = 588 'ICC "
+        "Mens T20 World Cup Warm-up Matches 2024' (15 mt): consecutive editions.",
+    "icc women s under world cup":
+        "911 'ICC Women's Under 19 T20 World Cup, 2025' (41 mt) = 912 'ICC Under 19 "
+        "Womens T20 World Cup, 2025' (42 mt): SAME edition. The 41 fixtures are "
+        "duplicated (same date, teams, venue) -> flagged below as a same-season "
+        "duplicate for a separate drop decision; the key merge itself is safe.",
+}
+
+
+def apply_league_aliases(tf: pd.DataFrame) -> list[dict]:
+    """Fold alias member keys into their canonical key (in place). Aborts on
+    a chained alias or a merged key spanning two genders. Returns records."""
+    chained = set(LEAGUE_KEY_ALIASES) & set(LEAGUE_KEY_ALIASES.values())
+    if chained:
+        raise SystemExit(f"LEAGUE_KEY_ALIASES chain: {sorted(chained)}")
+    records = []
+    for member, canon in LEAGUE_KEY_ALIASES.items():
+        m_ids = tf.loc[tf["league_key"] == member, "tournament_id"].astype(int).tolist()
+        c_ids = tf.loc[tf["league_key"] == canon, "tournament_id"].astype(int).tolist()
+        gens = set(tf.loc[tf["league_key"].isin([member, canon]), "gender"].dropna())
+        if len(gens) > 1:
+            raise SystemExit(f"LEAGUE_KEY_ALIASES {member!r} -> {canon!r}: "
+                             f"genders {sorted(gens)} - refusing a cross-gender merge")
+        tf.loc[tf["league_key"] == member, "league_key"] = canon
+        records.append({"member": member, "canonical": canon, "member_ids": m_ids,
+                        "canonical_ids": c_ids, "gender": next(iter(gens), None),
+                        "status": "applied" if m_ids and c_ids else "not_present",
+                        "evidence": LEAGUE_KEY_ALIAS_EVIDENCE.get(member, "")})
+    return records
+
+
 # ---- confirmed duplicate tournament_ids to drop from L1 (matches + dim row).
 #   956 = "Asian Legends League, 2025": a never-started schedule snapshot whose
 #   early-round fixtures duplicate id 963 (the actually-played, completed copy).
@@ -328,6 +388,7 @@ def fix_tournaments(con):
         SELECT * FROM read_parquet('{DIM_TOURN.as_posix()}')
     """).df()
     tf["league_key"] = tf["tournament_name"].map(base_league)
+    alias_records = apply_league_aliases(tf)
 
     tcounts = dict(con.execute(f"""
         SELECT CAST(tournament_id AS BIGINT), COUNT(*)
@@ -344,7 +405,7 @@ def fix_tournaments(con):
         for sd, ids in by_start.items():
             if sd is not None and len(ids) > 1:
                 dupes.append((lk, sd, ids))
-    return tf, tcounts, dupes
+    return tf, tcounts, dupes, alias_records
 
 
 # --------------------------------------------------------------------------
@@ -376,7 +437,7 @@ def main():
     dm_after_keys = dm["venue_key"].nunique(dropna=True)
 
     # ---------- FIX 2 ----------
-    tf, tcounts, dupes = fix_tournaments(con)
+    tf, tcounts, dupes, alias_records = fix_tournaments(con)
 
     # ---------- FIX 3 — drop confirmed duplicate tournament(s) ----------
     dm_rows_before = len(dm)
@@ -443,6 +504,11 @@ def main():
     multi = (tf.groupby("league_key")["tournament_id"].nunique()
                .loc[lambda s: s > 1])
     print(f"  {len(multi)} league_keys span >1 season/id.")
+    print(f"\n  APPROVED league_key aliases ({len(alias_records)}):")
+    for a in alias_records:
+        print(f"    [{a['status']}] '{a['member']}' {a['member_ids']} -> "
+              f"'{a['canonical']}' {a['canonical_ids']} ({a['gender']})")
+        print(f"        evidence: {a['evidence']}")
 
     ipl = tf[tf.league_key == "indian premier league"]
     ipl_matches = int(sum(tcounts.get(int(i), 0) for i in ipl.tournament_id))
