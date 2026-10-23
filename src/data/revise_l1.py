@@ -111,9 +111,9 @@ LEAGUE_KEY_ALIAS_EVIDENCE: dict[str, str] = {
         "Mens T20 World Cup Warm-up Matches 2024' (15 mt): consecutive editions.",
     "icc women s under world cup":
         "911 'ICC Women's Under 19 T20 World Cup, 2025' (41 mt) = 912 'ICC Under 19 "
-        "Womens T20 World Cup, 2025' (42 mt): SAME edition. The 41 fixtures are "
-        "duplicated (same date, teams, venue) -> flagged below as a same-season "
-        "duplicate for a separate drop decision; the key merge itself is safe.",
+        "Womens T20 World Cup, 2025' (42 mt): SAME edition, duplicated fixtures; "
+        "912 is dropped (DROP_TOURNAMENT_IDS), 911 carries the canonical key. "
+        "Future editions spelled \"Women's Under 19\" fold in here.",
 }
 
 
@@ -144,7 +144,49 @@ def apply_league_aliases(tf: pd.DataFrame) -> list[dict]:
 #   early-round fixtures duplicate id 963 (the actually-played, completed copy).
 #   All 15 rows are status=not_started / winner NULL (already inert for
 #   aggregates); dropped to remove duplicate snapshot targets. 963 is kept.
-DROP_TOURNAMENT_IDS = {956}
+#   912 = "ICC Under 19 Womens T20 World Cup, 2025": a second copy of id 911
+#   (same edition, same 41 fixtures: date, teams and venue identical). Kept =
+#   911, the copy with the richer linked data: 41/41 results vs 40/41 (912's
+#   copy of 911/3802 has winner NULL, result_type '_new_kind'), 4,735
+#   ball-by-ball rows vs 0, equal tournament_points (16 / 16). 912 has the
+#   only scorecards for 2 fixtures (3776, 3764; 45 batting rows) - lost with
+#   the drop, accepted - plus a not_started 'TBC' fixture (3795). Approved
+#   2026-10-23 (user: "keep the id whose rows carry the richer linked data").
+DROP_TOURNAMENT_IDS = {956, 912}
+# dropped id -> kept id + one evidence line (manifest + match_id_map)
+DROP_TOURNAMENT_KEPT = {956: 963, 912: 911}
+DROP_TOURNAMENT_EVIDENCE = {
+    956: "Asian Legends League 2025 never-started schedule snapshot; its "
+         "fixtures duplicate 963 (played, completed); all rows not_started.",
+    912: "ICC U19 Women's T20 World Cup 2025 second copy of 911 (same 41 "
+         "fixtures). 911 kept: 41/41 results vs 40/41, 4,735 balls vs 0, "
+         "points 16/16; 912's scorecards for 2 fixtures lost (accepted).",
+}
+MATCH_MAP = (L1 / "match_id_map" / "match_id_map.parquet")
+L1_MANIFEST = L1 / "_manifest.json"
+
+
+def duplicate_match_map(dm: pd.DataFrame) -> pd.DataFrame:
+    """old_match_id (in a dropped tournament) -> canonical_match_id (the same
+    fixture in the kept tournament: same date + same team pair), else NULL."""
+    rows = []
+    d = dm.assign(k_d=pd.to_datetime(dm["start_at"]).dt.date,
+                  k_a=dm[["team_a_id", "team_b_id"]].min(axis=1),
+                  k_b=dm[["team_a_id", "team_b_id"]].max(axis=1))
+    for drop_id, keep_id in DROP_TOURNAMENT_KEPT.items():
+        keep = d[d["tournament_id"].astype("int64") == keep_id]
+        idx = {(r.k_d, r.k_a, r.k_b): int(r.match_id) for r in keep.itertuples()}
+        for r in d[d["tournament_id"].astype("int64") == drop_id].itertuples():
+            canon = idx.get((r.k_d, r.k_a, r.k_b))
+            rows.append({"old_match_id": int(r.match_id),
+                         "canonical_match_id": canon,
+                         "dropped_tournament_id": drop_id,
+                         "kept_tournament_id": keep_id,
+                         "status": str(r.status),
+                         "paired": canon is not None})
+    return pd.DataFrame(rows, columns=["old_match_id", "canonical_match_id",
+                                       "dropped_tournament_id", "kept_tournament_id",
+                                       "status", "paired"])
 
 # ---- city values that carry no locational evidence (country/region-level or junk)
 JUNK_CITY = {
@@ -441,6 +483,7 @@ def main():
 
     # ---------- FIX 3 — drop confirmed duplicate tournament(s) ----------
     dm_rows_before = len(dm)
+    match_map = duplicate_match_map(dm)
     dm = dm[~dm["tournament_id"].astype("int64").isin(DROP_TOURNAMENT_IDS)].copy()
     dropped_matches = dm_rows_before - len(dm)
     tf = tf[~tf["tournament_id"].astype("int64").isin(DROP_TOURNAMENT_IDS)].copy()
@@ -450,6 +493,26 @@ def main():
     write_parquet(con, map_df, VENUE_MAP)
     write_parquet(con, dm, DIM_MATCH)
     write_parquet(con, tf, DIM_TOURN)
+    write_parquet(con, match_map, MATCH_MAP)
+    drop_records = []
+    for drop_id, keep_id in sorted(DROP_TOURNAMENT_KEPT.items()):
+        mm = match_map[match_map["dropped_tournament_id"] == drop_id]
+        drop_records.append({
+            "dropped_tournament_id": drop_id, "kept_tournament_id": keep_id,
+            "matches_dropped": int(len(mm)), "paired_to_kept": int(mm["paired"].sum()),
+            "unpaired": mm.loc[~mm["paired"], "old_match_id"].astype(int).tolist(),
+            "evidence": DROP_TOURNAMENT_EVIDENCE.get(drop_id, "")})
+    if L1_MANIFEST.exists():
+        import json
+        man = json.loads(L1_MANIFEST.read_text(encoding="utf-8"))
+        man["revise_l1_duplicate_tournament_drops"] = {
+            "method": "confirmed duplicate tournament ids dropped from dim_match + "
+                      "dim_tournament; match_id_map keeps old -> canonical match id "
+                      "(same date + team pair in the kept tournament)",
+            "match_id_map": "data/lake/l1/match_id_map/match_id_map.parquet",
+            "drops": drop_records,
+            "league_key_aliases": alias_records}
+        L1_MANIFEST.write_text(json.dumps(man, indent=2, default=str), encoding="utf-8")
 
     # ================= REPORT =================
     print("\n" + "=" * 74)
@@ -537,8 +600,13 @@ def main():
     print(f"  dropped tournament_ids: {sorted(DROP_TOURNAMENT_IDS)}")
     print(f"  dim_match rows dropped : {dropped_matches} "
           f"({dm_rows_before} -> {len(dm)})")
-    print(f"  dim_tournament rows    : removed {len(DROP_TOURNAMENT_IDS)} "
-          f"(956 = Asian Legends never-started dup of 963; 963 kept)")
+    print(f"  dim_tournament rows    : removed {len(DROP_TOURNAMENT_IDS)}")
+    for r in drop_records:
+        print(f"    {r['dropped_tournament_id']} -> kept {r['kept_tournament_id']}: "
+              f"{r['matches_dropped']} matches dropped, {r['paired_to_kept']} mapped "
+              f"to the kept copy, unpaired {r['unpaired']}")
+        print(f"        evidence: {r['evidence']}")
+    print(f"  match_id_map: {len(match_map)} rows -> {MATCH_MAP}")
 
     con.close()
     print("\n(Updated L1 written. Remaining flagged items NOT finalized — awaiting review.)")
