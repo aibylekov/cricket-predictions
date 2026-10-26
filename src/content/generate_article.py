@@ -104,8 +104,9 @@ DEMO:
     venv/Scripts/python.exe -m src.content.generate_article [--modes
     post_toss|pre_toss|both] [--reset-authors]
 generates the three payload-demo matches (confident England, moderate
-MLC, close_call IPL) as ONE MATCH DAY: the rotation deals three different
-author profiles up front (printed), then each draft is generated in the
+MLC, close_call IPL) plus the WBBL early-season demo (season opener) as
+ONE MATCH DAY: the rotation deals four different author profiles up front
+(printed), then each draft is generated in the
 requested mode(s) (default post_toss; saved as <match_id>_<mode>_draft.md),
 validated, and printed with its report. --reset-authors starts a fresh
 deck (otherwise persisted assignments are reused, by design).
@@ -146,11 +147,15 @@ MAX_TOKENS = 2500
 MAX_RETRIES = 2           # repair rounds after a failed validation
 MODE = "post_toss"        # toss lifecycle: "post_toss" | "pre_toss"
 
-# The SAME three matches as the payload demo (band verified at runtime).
+# The SAME three matches as the payload demo (band verified at runtime),
+# plus one WBBL early-season match (women's chain on stacked_hybrid_v4).
+# p_home values are stacked_hybrid_v4 payload predictions.
 DEMO_MATCHES = [
-    ("confident", 8731),    # England v India, Rose Bowl 2026 (p_home 0.77)
-    ("moderate", 8250),     # Washington Freedom v MI New York, MLC 2026
-    ("close_call", 8032),   # RCB v Gujarat Titans, IPL 2026 (the IPL case)
+    ("confident", 8731),    # England v India, Rose Bowl 2026 (p_home 0.79)
+    ("moderate", 8250),     # Washington Freedom v MI New York, MLC 2026 (0.60)
+    ("close_call", 8032),   # RCB v Gujarat Titans, IPL 2026 (the IPL case, 0.55)
+    ("wbbl_early", 5923),   # Brisbane Heat v Melbourne Renegades, WBBL 2025
+                            # opener 2025-11-09 (moderate, 0.60)
 ]
 
 # Cricket-structural numbers allowed without payload support (T20, 20 overs).
@@ -1346,7 +1351,7 @@ def main() -> None:
         sys.exit(1)
 
     import argparse
-    ap = argparse.ArgumentParser(description="demo: the three demo matches "
+    ap = argparse.ArgumentParser(description="demo: the demo matches "
                                  "generated as ONE match day under the "
                                  "author rotation")
     ap.add_argument("--modes", choices=("post_toss", "pre_toss", "both"),
@@ -1358,7 +1363,7 @@ def main() -> None:
     modes = ("post_toss", "pre_toss") if args.modes == "both" else (args.modes,)
 
     # ONE MATCH DAY: deal the whole day up front, in generation order. The
-    # deck guarantees three different profiles; the state file guarantees
+    # deck guarantees different profiles; the state file guarantees
     # a retry or the other toss mode of a match gets the same one.
     rotation = AuthorRotation()
     if args.reset_authors:

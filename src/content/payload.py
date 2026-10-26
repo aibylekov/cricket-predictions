@@ -2,16 +2,21 @@
 payload.py - Phase 3, step 1: PREDICTION PAYLOAD assembler.
 
 build_payload(match_id) -> JSON-serializable dict for ONE match, pulled ONLY
-from existing layers: the L3 feature row, the v2 model prediction, and the
-framing layer. THE WALL: this payload is the only thing the LLM article
+from existing layers: the L3 feature row, the production model prediction
+(stacked_hybrid_v4, src/model/stacked_hybrid.py; logistic_v2 until
+2026-10-26), and the framing layer. THE WALL: this payload is the only thing the LLM article
 generator will ever see. Nothing invented, nothing estimated ad hoc - a
 missing value is null and its completeness flag is false.
 
 Prediction rule (works for BOTH completed and upcoming matches):
-    train = all completed matches with match_date STRICTLY BEFORE the target
-    match's date (same anti-leakage rule as the harness; for an upcoming
-    match this is simply "all completed so far"). If history < MIN_TRAIN
-    (100), the prediction block is null and prediction_available = false.
+    train = all completed matches (men AND women) with match_date STRICTLY
+    BEFORE the target match's date (same anti-leakage rule as the harness;
+    for an upcoming match this is simply "all completed so far"). Level 1
+    (v3.1 pooled) fits on all of it; level 2 is the GLOBAL form stacker for
+    men and the WOMEN-ONLY form stacker for women, fit on level-1
+    out-of-sample predictions of those earlier matches (scheme in
+    src/model/stacked_hybrid.py). If history < MIN_TRAIN (100), the
+    prediction block is null and prediction_available = false.
     Note: for completed matches this is slightly better-informed than the
     harness's monthly-block OOF (train cuts at the match date, not the month
     start) - same rule, finer cut - so a demo match's band can occasionally
@@ -50,7 +55,8 @@ DEMO:
     venv/Scripts/python.exe -m src.content.payload
 prints three sample payloads (confident / moderate / close_call, the
 close_call from IPL where possible) + the historical band distribution over
-all walk-forward out-of-sample predictions.
+all walk-forward out-of-sample predictions of the production model, overall
+and per gender.
 """
 from __future__ import annotations
 
@@ -64,7 +70,8 @@ import numpy as np
 import pandas as pd
 
 from src.content.framing import confidence_band, frame
-from src.model.train_logistic import C_REG, predict_logistic
+from src.model.stacked_hybrid import (MODEL_VERSION, level1_oof,
+                                      make_harness_predictor, predict_hybrid)
 from src.model.validation import IPL, MIN_TRAIN, load_completed, walk_forward
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -74,8 +81,6 @@ L3_PATH = (ROOT / "data" / "lake" / "l3" / "feature_rows" / "feature_rows.parque
 
 # dim_match.result strings like "won by 24 runs" / "won by 6 wkts"
 _MARGIN_RE = re.compile(r"by\s+(\d+)\s+(runs?|wkts?|wickets?)", re.IGNORECASE)
-
-MODEL_VERSION = f"logistic_v2_C{C_REG:g}"          # -> "logistic_v2_C0.01"
 
 PHASE_METRICS = ["rr_powerplay", "rr_middle", "rr_death",
                  "econ_powerplay", "econ_middle", "econ_death"]
@@ -106,7 +111,8 @@ def _tables():
             SELECT CAST(tournament_id AS BIGINT), tournament_name
             FROM read_parquet('{(L1/'dim_tournament'/'dim_tournament.parquet').as_posix()}')
         """).fetchall())
-        _CACHE["train"] = load_completed(gender=None)   # per-match gender filter below
+        _CACHE["train"] = load_completed(gender=None)   # men + women (pooled level 1)
+        _CACHE["level1"] = level1_oof(_CACHE["train"])  # stacker training inputs
         # iteration-2 content-layer tables
         _CACHE["player_form"] = con.execute(f"""
             SELECT * FROM read_parquet(
@@ -653,14 +659,12 @@ def build_payload(match_id: int) -> dict:
         raise KeyError(f"match_id {match_id} not found in L3")
     row = hit.iloc[0]
 
-    # ---- prediction: train strictly before this match's date, SAME GENDER
-    # (men's and women's T20 are separate populations; the men's demo
-    # payloads are unchanged by the scope widening) ----
-    train = train_all[(train_all["match_date"] < row["match_date"])
-                      & (train_all["gender"] == row["gender"])]
+    # ---- prediction: stacked_hybrid_v4, train strictly before this match's
+    # date (all genders for level 1; the stacker picks its gender pool) ----
+    train = train_all[train_all["match_date"] < row["match_date"]]
     p_home = None
     if len(train) >= MIN_TRAIN:
-        p_home = float(predict_logistic(train, hit)[0])
+        p_home = float(predict_hybrid(train, hit, t["level1"])[0])
 
     home_name = teams.get(_i(row["home_team_id"]))
     away_name = teams.get(_i(row["away_team_id"]))
@@ -803,21 +807,24 @@ def build_payload(match_id: int) -> dict:
 
 # ---- demo ----------------------------------------------------------------
 def _band_distribution(oof: pd.DataFrame) -> None:
-    p = oof["p"].to_numpy(dtype=float)
-    y = oof["y"].to_numpy(dtype=float)
-    p_max = np.maximum(p, 1 - p)
-    bands = np.array([confidence_band(v) for v in p_max])
-    hit = ((p >= 0.5) == (y == 1))                    # predicted side won
-    print("\n" + "=" * 70)
-    print(f"BAND DISTRIBUTION - all walk-forward OOS predictions (n={len(p)})")
-    print("=" * 70)
-    print(f"  {'band':12s} {'n':>6s} {'share':>7s} {'acc_in_band':>12s}")
-    print("  " + "-" * 42)
-    for b in ("confident", "moderate", "close_call"):
-        m = bands == b
-        share = 100.0 * m.sum() / len(p)
-        acc = 100.0 * hit[m].mean() if m.sum() else float("nan")
-        print(f"  {b:12s} {int(m.sum()):6d} {share:6.1f}% {acc:11.1f}%")
+    for label, sub in (("all", oof), ("men", oof[oof["gender"] == "male"]),
+                       ("women", oof[oof["gender"] == "female"])):
+        p = sub["p"].to_numpy(dtype=float)
+        y = sub["y"].to_numpy(dtype=float)
+        p_max = np.maximum(p, 1 - p)
+        bands = np.array([confidence_band(v) for v in p_max])
+        hit = ((p >= 0.5) == (y == 1))                # predicted side won
+        print("\n" + "=" * 70)
+        print(f"BAND DISTRIBUTION ({label}) - {MODEL_VERSION} walk-forward OOS "
+              f"predictions (n={len(p)})")
+        print("=" * 70)
+        print(f"  {'band':12s} {'n':>6s} {'share':>7s} {'acc_in_band':>12s}")
+        print("  " + "-" * 42)
+        for b in ("confident", "moderate", "close_call"):
+            m = bands == b
+            share = 100.0 * m.sum() / len(p)
+            acc = 100.0 * hit[m].mean() if m.sum() else float("nan")
+            print(f"  {b:12s} {int(m.sum()):6d} {share:6.1f}% {acc:11.1f}%")
 
 
 def _pick_demo_matches(oof: pd.DataFrame) -> dict:
@@ -840,10 +847,10 @@ def _pick_demo_matches(oof: pd.DataFrame) -> dict:
 
 
 def main() -> None:
-    df = load_completed()
-    print(f"Building v2 walk-forward predictions for band stats "
-          f"({len(df)} completed matches) ...")
-    oof, _info = walk_forward(df, predict_logistic)
+    df = _tables()["train"]
+    print(f"Building {MODEL_VERSION} walk-forward predictions for band stats "
+          f"({len(df)} completed matches, men + women) ...")
+    oof, _info = walk_forward(df, make_harness_predictor(_tables()["level1"]))
 
     _band_distribution(oof)
 

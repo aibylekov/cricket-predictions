@@ -567,9 +567,34 @@ git push -u origin main
       SC 2026 tournament-window форма: 5-13 предишни SC мача на отбор (беше 0
       при NULL league_key); мъжките L2/L3 непроменени.
 
-🟨 СЛЕДВА (заключено, 23.10.2026): retrain мъже+жени, league-aware, WBBL
-точност отделно. (SC 2026 league_key: решено с manual seed; player scores за
-10078-10081/10084 - само ако сайтът даде нов експорт.)
+- ✅ PRODUCTION MODEL = STACKED HYBRID v4 (26.10.2026) — "production model =
+  stacked hybrid v4; WBBL at parity with form baseline, women overall beat
+  it; IPL beaten for the first time".
+    · payload.py: `model_version = "stacked_hybrid_v4"` (беше
+      logistic_v2_C0.01) — всяка статия носи `payload_model=` в хедъра.
+      Модел: src/model/stacked_hybrid.py. Ниво 1 = v3.1 pooled логистика
+      (мъже+жени + is_female); ниво 2 = форм-стакер върху logit(p_v3.1) +
+      form_gap tourn + form_gap last5: ГЛОБАЛЕН за мъже (с is_female), САМО
+      ЖЕНСКИ за жени. Стакерът учи само от out-of-sample v3.1 прогнози на
+      мачове преди датата; <200 реда -> v3.1 минава непроменен.
+    · Оценка (walk-forward, 5,039 мача): docs/model/stack_hybrid_report.md.
+      Общо log_loss 0.6699 (v2 0.6782, form 0.6807). Мъже = глобалния
+      стакер 0.6784. Жени 0.6400 (v3.1 0.6459, form 0.6522). WBBL 0.6891 vs
+      form 0.6729 — "match" (CI на делтата включва 0, n=80). IPL 0.7017 vs
+      form 0.7112. Хибридът е избран СЛЕД per-gender рунда (caveat в
+      репорта); истинският out-of-sample тест е живият WBBL 2026.
+    · Ленти 65/55: честни по пол (confident hit 67.5% мъже / 76.6% жени,
+      moderate 60.3% / 59.8%) — без промяна на праговете. WBBL/IPL срезовете
+      са под обещанието при малко n (8 / 1 confident) — следи се.
+    · Тестове: tests/test_stacked_hybrid.py (продукция == оценения хибрид
+      бит-по-бит; разбъркани етикети и бъдещи редове не мърдат прогнозата;
+      payload stamp). Инструменти за оценка: retrain_men_women.py,
+      stack_form.py, stack_form_gender.py, stack_hybrid.py (+ репорти).
+    · E2E: 3-те демо мача + WBBL демо (5923, WBBL 2025 откриване) минават
+      през хибрида + author rotation + пълната валидация.
+
+🟨 Отворено: WBBL 2026 мачовете още не са в L3 (данни до 21.10.2026);
+player scores за SC 2026 10078-10081/10084 — само ако сайтът даде нов експорт.
 
 🟨 Следва (по избор): (а) Level 1 фундаментален слой (Roanuz lineup
 endpoint + availability фичъри) — атакува IPL директно; (б) нелинеен
