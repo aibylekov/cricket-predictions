@@ -61,7 +61,11 @@ STYLE VALIDATOR (mechanical, post-generation):
       * FORM-CLAIM LABEL: franchise matches label form claims with the
         league name (payload match.form_label), never a redundant
         "T20"; internationals keep T20; venue-history claims are
-        always "T20" (that sample spans competitions).
+        always "T20" (that sample spans competitions). A last5 window
+        that includes ANOTHER competition (WBBL side's Spring Challenge
+        games) is not league form: its counts never carry the league
+        name ("3 of their last 5 WBBL matches across competitions"
+        fails); they say "across competitions" or name the events.
       * WIN CLAIMS COUNT+TOTAL (C36): a win percentage's sentence must
         contain "X of N", not just a bare sample size.
       * VENUE SAMPLE SCOPE: the Pitch section states the sample (count
@@ -338,16 +342,82 @@ def _is_venue_claim(s: str, payload: dict | None) -> bool:
     return bool(venue) and str(venue).lower() in s.lower()
 
 
+_ACROSS_RE = re.compile(r"\bacross\s+(?:all\s+|different\s+|several\s+)?"
+                        r"(?:competitions|events|tournaments|leagues)\b",
+                        re.IGNORECASE)
+_EDITION_RE = re.compile(r"[,\s]*\b(?:19|20)\d{2}(?:[/-]\d{2,4})?\b.*$")
+
+
+def _competition(event) -> str:
+    """Event name without its edition ("Womens Big Bash League, 2024" ->
+    "womens big bash league"): WBBL 2024 and WBBL 2025 are one league."""
+    return _EDITION_RE.sub("", str(event or "")).strip().lower()
+
+
+def _form_pairs(sentence: str) -> set[tuple[int, int]]:
+    """(count, total) of every "won/lost N of M" / "N wins in M" claim."""
+    out = {(int(m.group(2)), int(m.group(3)))
+           for m in _PAIR_OF_RE.finditer(sentence)}
+    out |= {(int(m.group(1)), int(m.group(3)))
+            for m in _PAIR_FROM_RE.finditer(sentence)}
+    return out
+
+
+def _cross_competition_windows(payload: dict) -> dict:
+    """{(count, total): events} for the last5 windows that include ANOTHER
+    competition than this match's league - their counts are not league
+    form. Pairs a league-only window also explains (tournament /
+    current_event / standings / this league's last5 entries, any
+    edition) are left out: ambiguous, never flagged."""
+    def both(w, n):
+        return {(int(w), int(n)), (int(n) - int(w), int(n))}
+
+    league: set = set()
+    form = payload.get("form") or {}
+    for side in ("home", "away"):
+        s = form.get(side) or {}
+        for window in ("tournament", "current_event"):
+            p = (s.get("win_pct") or {}).get(window)
+            n = (s.get("matches_in_window") or {}).get(window)
+            if p is not None and n:
+                league |= both(round(p * n), n)
+    st = payload.get("standings") or {}
+    for side in ("home", "away"):
+        r = st.get(side) if isinstance(st, dict) else None
+        if r and r.get("played") and r.get("won") is not None:
+            league |= both(r["won"], r["played"])
+    cur = _competition((payload.get("match") or {}).get("tournament"))
+    mixed: dict = {}
+    l5 = (payload.get("match_context") or {}).get("last5_results") or {}
+    for side in ("home", "away"):
+        ent = l5.get(side) or []
+        own = [e for e in ent if _competition(e.get("event")) == cur]
+        if own:
+            league |= both(sum(1 for e in own if e.get("won")), len(own))
+        if ent and len(own) < len(ent):
+            events = list(dict.fromkeys(e.get("event") for e in ent
+                                        if e.get("event")))
+            for pr in both(sum(1 for e in ent if e.get("won")), len(ent)):
+                mixed.setdefault(pr, events)
+    return {k: v for k, v in mixed.items() if k not in league}
+
+
 def _form_claims_mislabelled(article: str, payload: dict | None) -> list[str]:
     """ITERATION 4 - form-claim sentences must carry the RIGHT scope label:
     franchise matches the league name (payload match.form_label /
     form_label_full; a bare "T20" is the redundancy the editor flagged),
-    internationals the T20 token, venue-history claims always T20."""
+    internationals the T20 token, venue-history claims always T20.
+    A franchise count from a last5 window that includes another
+    competition must NOT carry the league name (the WBBL-demo gap: "3 of
+    their last 5 WBBL matches across competitions" over Spring Challenge
+    games); "across competitions" itself is enforced by the scope check."""
     m = (payload or {}).get("match") or {}
     franchise = m.get("competition_type") == "franchise"
     league_res = [re.compile(r"\b" + re.escape(tok) + r"\b", re.IGNORECASE)
                   for tok in (m.get("form_label"), m.get("form_label_full"))
                   if tok]
+    label = m.get("form_label") or "the league name"
+    mixed = _cross_competition_windows(payload) if franchise else {}
     out = []
     for s in _sentences(article):
         if not _FORM_CLAIM_RE.search(s):
@@ -355,8 +425,17 @@ def _form_claims_mislabelled(article: str, payload: dict | None) -> list[str]:
         if not franchise or _is_venue_claim(s, payload):
             if not _FORMAT_TOKEN_RE.search(s):
                 out.append(f'"{_excerpt(s)}" -> add the format word T20')
-        elif not any(r.search(s) for r in league_res):
-            label = m.get("form_label") or "the league name"
+            continue
+        labelled = any(r.search(s) for r in league_res)
+        spans = [mixed[p] for p in sorted(_form_pairs(s)) if p in mixed]
+        if labelled and (spans or _ACROSS_RE.search(s)):
+            ev = (" + ".join(spans[0]) if spans
+                  else "more than one competition")
+            out.append(f'"{_excerpt(s)}" -> this last-5 window includes '
+                       f"{ev} games; it is not '{label}' form - drop the "
+                       "league name and say "
+                       "'across competitions' (or name the events)")
+        elif not labelled and not spans:
             if _FORMAT_TOKEN_RE.search(s):
                 out.append(f'"{_excerpt(s)}" -> franchise league: label the '
                            f"form claim with '{label}', not 'T20' "

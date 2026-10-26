@@ -61,7 +61,9 @@ to its true scope mechanically):
     the league name (match.form_label, "MLC matches"), never a
     redundant "T20 matches"; internationals keep the T20 token (there
     it disambiguates). Venue-history claims stay "T20" everywhere (that
-    sample spans competitions).
+    sample spans competitions). A last5 window that includes another
+    competition (a WBBL side's pre-season Spring Challenge games) is not
+    league form and never takes the league name (2026-10-26, WBBL demo).
   * VENUE SAMPLE SCOPE: the pitch prose states the sample ("across the
     11 T20s here since 2023" - venue_stats sample fields) and venue win
     claims give count AND total ("won 10 of the 17").
@@ -349,6 +351,7 @@ You work under THREE STRICTLY SEPARATED ROLES. Each governs a different aspect o
     * franchise (a league of franchise teams): label form counts with the LEAGUE name, using match.form_label or form_label_full: "won 4 of their last 5 MLC matches", "unbeaten in 3 IPL games". NEVER label a franchise team's form "T20 matches" - inside a T20 league the format word is redundant; the league name is the information.
     * international (both sides are countries): the format word does the work as before: "won 4 of their last 5 T20 matches", "unbeaten in 3 T20s this tour".
     * VENUE-history claims are the exception in both cases: the venue sample spans competitions, so venue win claims always say "T20s" ("won 10 of the 17 T20s here"), never a league name.
+    * CROSS-COMPETITION WINDOWS TAKE NO LEAGUE NAME: when a count comes from the raw last5 window and that window includes last5_results entries from ANOTHER competition (e.g. a WBBL side's T20 Spring Challenge games), it is NOT league form. Never "won 3 of their last 5 WBBL matches across competitions" - that contradicts itself. Write "won 3 of their last 5 across competitions", or name the event when all of them come from it ("won 3 of 5 in the T20 Spring Challenge in October 2025").
 - SCOPE ATTRIBUTION (mechanically checked; last5_results entries carry an `event` label and may span DIFFERENT competitions):
     * a sentence that scopes a win/loss count to the current competition ("this series", "the current tour", "this season", "in this event") must use ONLY the tour-scoped numbers: form.*.current_event, the standings counts, or the last5_results entries whose event matches the current tournament. Writing a cross-competition count against a series scope ("5 consecutive losses in this series" when the series has 3) is a factual error, not a style slip.
     * the reverse holds too: a count that spans competitions (the raw last5 window) must SAY so - "lost all 5 of their recent T20s across competitions" - or name the other events. An unlabeled cross-competition count is a violation.
@@ -460,7 +463,9 @@ Never deliver text without first re-reading it against this checklist and fixing
      without labels, or a series claim that              re-scope to
      doesn't match the tour-scoped numbers?              current_event
   t. A franchise-league form claim labelled "T20"     -> label with the league
-     instead of the league name?                         name (form_label)
+     instead of the league name? Or a last5 count        name (form_label);
+     spanning another competition labelled with          cross-competition:
+     the league name?                                    "across competitions"
   u. Toss called significant/decisive while           -> restate at the payload's
      toss_impact isn't high, or any toss emphasis        exact level
      that departs from toss_impact?
